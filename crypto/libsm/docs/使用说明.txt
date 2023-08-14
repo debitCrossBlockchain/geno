@@ -1,0 +1,50 @@
+一、测试
+使用gmssl生成的公私钥，libsm生成的签名与gmssl生成的签名可以互相被对方验证通过。
+使用libsm生成的公私钥，libsm生成的签名与gmssl生成的签名可以互相被对方验证通过。
+
+二、国密gmssl
+1.安装gmssl 
+./config
+make
+make install
+chmod +x /root/GmSSL/util/point.sh
+#ln -s /usr/local/lib64/libcrypto.so.1.1 /usr/lib64/libcrypto.so.1.1
+#ln -s /usr/local/lib64/libssl.so.1.1 /usr/lib64/libssl.so.1.1
+ln -s /usr/local/lib/libgmcrypto.1.1 /usr/lib/libcrypto.so.1.1
+ln -s /usr/local/lib/libgmssl.1.1  /usr/lib/libssl.so.1.1
+2.生成公私钥并进行签名并验证：
+gmssl sm2 -genkey -out skey.pem
+gmssl sm2 -pubout -in skey.pem -out vkey.pem
+gmssl sm2utl -sign -in README.md -inkey skey.pem -out README.md.sig -id 1234567812345678 （同libsm中使用的id保持一致）
+gmssl sm2utl -verify -in README.md -pubin -inkey vkey.pem -sigfile README.md.sig -id 1234567812345678 （同libsm中使用的id保持一致）
+gmssl sm2utl -verify -in README.md -pubin -inkey vkey.pem -sigfile README.md.sig1 -id 1234567812345678 （同libsm中使用的id保持一致）
+
+3.显示公私钥的原始信息：
+gmssl sm2 -text -in skey.pem 加载私钥
+gmssl sm2 -in sm2_pub_document.pem -text -pubin 加载公钥
+
+4.证书生成
+gmssl req -new -key skey.pem -out sm2.req
+vi certext.ext   subjectAltName=DNS:www.example.com
+gmssl x509 -req -days 365 -in sm2.req -signkey skey.pem -out sm2_cert.pem -extfile certext.ext
+gmssl x509 -text -in sm2_cert.pem -noout
+gmssl x509 -text -in ecdsa-p256-sha256-self-signed.cer -noout -inform der
+
+三、openssl 1.1.1h
+1.openssl生成私钥：
+openssl ecparam -list_curves | grep SM2
+openssl ecparam -out ec_param.pem -name SM2 -param_enc explicit -genkey
+openssl ecparam -in ec_param.pem -text
+openssl ecparam -in ec_param.pem -check
+openssl pkcs8 -topk8 -inform PEM -in ec_param.pem -outform pem -nocrypt -out pri_key_pkcs8.pem
+2.查看私钥信息
+openssl ec -in pri_key_pkcs8.pem -text
+查看pkcs8格式下加密存储的私钥
+openssl pkcs8 -in sm2_enc_document.pem -out key-test.pem
+3.根据私钥生成公钥：
+openssl ec -in ec_param.pem -pubout -out pub_key.pem
+4.签名：
+https //www.openssl.org/docs/man1.1.1/man1/dgst.html
+openssl dgst -sm3 -sign ec_param.pem -out README.md.sig README.md
+5.验证：
+openssl dgst -sm3 -verify pub_key.pem -signature README.md.sig2 README.md

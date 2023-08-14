@@ -1,0 +1,29 @@
+[package]
+name = "libsm"
+version = "0.4.0"
+authors = [
+    "Tang Zongxun <tangzongxun@hotmail.com>",
+    "Niu Junxiang <494521900@qq.com>",
+    "Cryptape Technology <contact@cryptape.com>"
+]
+
+description = "A Rust Library of China's Standards of Encryption Algorithms (SM2/3/4)"
+keywords = ["cipher", "cryptography"]
+license = "Apache-2.0"
+
+[dependencies]
+rand = "0.4"
+byteorder = "1"
+num-bigint = "0.2"
+num-traits = "0.2"
+num-integer = "0.1"
+lazy_static = "1.0"
+pkcs8 = { version = "0.7.5" , features = ["alloc","pem","pkcs5","pkcs1","encryption","std"]}
+hex = "0.3"
+base64 = "0.13.0"
+hex-literal = "0.3"
+thiserror ="1.0.21"
+[dev-dependencies]
+
+[features]
+internal_benches = []

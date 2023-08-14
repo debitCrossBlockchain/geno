@@ -1,0 +1,15 @@
+[package]
+name = "vm"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+revm = { version = "3.3.0" }
+state = { path = "../state", version = "0.1.0" }
+utils = { path = "../utils", version = "0.1.0" }
+storage-db = { path = "../storage/storage-db", version = "0.1.0" }
+ledger-store = { path = "../storage/ledger-store", version = "0.1.0" }
+state-store = { path = "../storage/state-store", version = "0.1.0" }
+protobuf = { version = "2.27.1", features = ["with-bytes"] }
+bytes = "1.4.0"

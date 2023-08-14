@@ -1,0 +1,42 @@
+[package]
+name = "utils"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+configure = { path = "../configure", version = "0.1.0" }
+msp = { path = "../msp", version = "0.1.0" }
+serde = { version = "1.0.64", features = ["derive"] }
+protos = { path = "../protos", version = "0.1.0" }
+serde_json = "1.0.64"
+serde_derive = "1.0.104"
+serde_millis = "0.1.1"
+fxhash = "0.2"
+protobuf = { version = "2.27.1", features = ["with-bytes"] }
+base64 = "0.13.0"
+chrono = "0.4.19"
+parking_lot = "0.11"
+once_cell = "1.9.0"
+tokio = "1.17.0"
+exitcode = "1.1.2"
+lazy_static = "1.4.0"
+rayon = "1.4.1"
+
+crossbeam-channel = "0.5"
+anyhow = "1.0.52"
+hotwatch = "0.4.6"
+tracing = "0.1.29"
+tracing-appender = "0.2.0"
+tracing-subscriber = { version = "0.3.5", features = [
+    "env-filter",
+    "json",
+    "time",
+    "local-time",
+] }
+# time = { version = "0.3.7", features = ["macros"] }
+time = { version = "0.3.7" }
+
+[dev-dependencies]
+actix-rt = "*"

@@ -1,0 +1,170 @@
+syntax = "proto3";
+import "common.proto";
+import "consensus.proto";
+
+message LedgerHeader
+{
+  uint64 height = 1;
+  bytes  hash = 2;
+  bytes  previous_hash = 3;
+  bytes  state_tree_hash = 4;
+  uint64 timestamp = 5;
+  bytes  consensus_value_hash = 6;
+  uint64 version = 7;
+  uint64 tx_count = 8;
+  uint64 total_tx_count = 9;
+  bytes  validators_hash = 10;
+  bytes  fees_hash = 11;
+  string hub_id = 12;
+  string chain_id = 13;
+  string proposer = 14;
+  ExtendedData extended_data = 15;
+}
+
+message Ledger{
+  LedgerHeader header = 1;
+  repeated TransactionSign transaction_signs = 2;
+  ExtendedData extended_data = 3;
+}
+
+message ExtendedData {
+  map<string, bytes> extra_data = 1;
+}
+
+enum TransactionType{
+  EVM_GENO = 0;
+  ETH_LEGACY = 1;
+  WASM = 2;
+}
+
+message Transaction {
+  TransactionType tx_type =1;
+  string  source = 2;
+  uint64  nonce = 3;
+  string  to = 4;
+  string  value = 5;
+  bytes   payload = 6;
+  uint64  gas_limit = 7;
+  string  gas_price = 8;
+  string  hub_id = 9;
+  string  chain_id = 10;
+  ExtendedData reserves = 11;
+}
+
+
+message TransactionSign {
+  enum SourceType{
+    JSONRPC = 0;
+    P2P=1;
+    WEBSOCKET = 2;
+  };
+  Transaction transaction = 1;
+  repeated Signature signatures = 2;
+  SourceType source_type = 4;
+}
+
+message TransactionSignBrodcast{
+  string batchid = 1;
+  repeated TransactionSign transactions = 2;
+}
+
+message TransactionSignStore {
+	TransactionSign transaction_sign = 1;
+  TransactionResult transaction_result = 2;
+	int64 ledger_height = 3;
+}
+
+message TransactionSignSet{
+  repeated TransactionSign txs = 2;
+}
+
+message BftValue{
+  TransactionSignSet tx_set = 1;
+  int64 ledger_timestamp = 2;
+  ConsensusProof previous_proof = 3;
+  int64 ledger_seq = 4;
+  bytes previous_ledger_hash = 5;
+  LedgerUpgrade ledger_upgrade = 6;
+  repeated bytes tx_hash_set = 8;
+  string proposer = 9; 
+}
+
+
+//for ledger version upgrade
+message LedgerUpgrade{
+    uint64 new_ledger_version = 1;
+    ValidatorSet validators = 2;
+	  string chain_id = 3;
+    string chain_hub = 4;
+}
+
+
+message LedgerUpgradeNotify
+{
+	int64 nonce = 1;   //for broadcast
+	LedgerUpgrade upgrade = 2;
+	Signature signature = 3;   //consensus sig
+};
+
+message LedgerUpgradeInfo {
+  int64 recv_time=1;
+  string address=2;
+  LedgerUpgradeNotify msg=3;
+};
+
+
+message Contract{
+  enum ContractType{
+    EVM = 0;      
+    WASM = 1;
+  }
+  string  name = 1;
+	bytes   code = 2;
+  string  creator = 4;
+  ContractType kind = 5;
+}
+
+message Account{
+	string  address = 1;
+	uint64  nonce = 2;
+  uint64  balance = 3;
+	bytes   metadata_hash = 4;	
+	Contract  contract = 5;	
+	string  document = 6;
+}
+
+
+//for sync
+message GetLedgers
+{
+	int64 begin = 1;
+	int64 end   = 2;
+	int64 timestamp  = 3;
+	string chain_id = 4;
+  uint64 trigger = 5;
+}
+
+message SyncStat
+{
+    int64 send_time = 1;
+    int64 probation = 2;
+    GetLedgers get_ledgers = 3;
+}
+
+message Ledgers
+{
+	enum SyncCode{
+		OK = 0;             //Success
+		OUT_OF_SYNC = 1;    //The node itself is not in sync status
+		OUT_OF_LEDGERS = 2; //Too many requested ledgers
+		BUSY = 3;           //This node is occupied
+		REFUSE = 4;         //The node itself is not allow sync
+		INTERNAL = 5;       //Inner error
+	}
+	repeated BftValue values = 1;
+	SyncCode sync_code = 2;
+	int64    max_seq = 3;
+	ConsensusProof    proof = 4;
+	string   chain_id = 5;
+  uint64 trigger = 6;
+}

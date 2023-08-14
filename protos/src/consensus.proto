@@ -1,0 +1,239 @@
+syntax = "proto3";
+import "common.proto";
+
+enum ConsensusType {
+  CONSENSUS_NONE = 0;
+  PBFT = 1;
+  TBFT = 2;
+  HOTSTUFF = 3;
+}
+
+message Consensus {
+  ConsensusType msg_consensus_type = 1;
+  bytes data = 2;
+}
+
+//PBFT protocol
+message BftPrePrepare
+{
+  int64 view_number = 1;
+  int64 sequence = 2;
+  int64 replica_id = 3;
+  bytes value = 4;
+  bytes value_digest = 5;
+  string proposer = 6;
+}
+
+message BftPrepare
+{
+  int64 view_number = 1;
+  int64 sequence = 2;
+  int64 replica_id = 3;
+  bytes value_digest = 4;
+}
+
+message BftCommit
+{
+  int64 view_number = 1;
+  int64 sequence = 2;
+  int64 replica_id = 3;
+  bytes value_digest = 4;
+}
+
+message BftPreparedSet
+{
+  BftSign pre_prepare = 1;
+  repeated BftSign prepare = 2;
+}
+
+message BftViewChange
+{
+  int64 view_number = 1; //v+1
+  int64 sequence = 2;     //last execution seq
+  bytes prepared_value_digest = 3; //prepared value hash
+  int64 replica_id = 4;
+}
+
+message ViewChangeMessage
+{
+  repeated ViewChangeStore item = 1;
+}
+
+message ViewChangeStore
+{
+  int64 sequence = 1; //v+1
+  int64 view_number = 2;     //last execution seq
+  int64 view_change_round = 3;
+  int64 start_time = 4;
+  int64 end_time = 5;
+  int64 last_propose_time = 6;
+  int64 last_newview_time = 7;
+  int64 new_view_round = 8;
+  BftSign view_change_msg = 9;
+  BftSign new_view = 10;
+  repeated BftSign msg_buffer = 11;
+  repeated BftViewChange view_changes = 12;
+}
+
+message BftViewChangeValue
+{
+  BftSign view_change_env = 1; // view change env
+  BftPreparedSet prepared_set = 2;  //prepared messages larger than n
+}
+
+message BftNewView
+{
+  int64 view_number = 1; //v+1
+  int64 sequence = 2;     //sequence
+  int64 replica_id = 3;
+  repeated BftSign view_changes = 4;     //V
+  BftSign pre_prepare = 5;  //O
+}
+
+enum BftMessageType {
+  PRE_PREPARE = 0;
+  PREPARE = 1;
+  COMMIT = 2;
+  VIEW_CHANGE = 3;
+  NEW_VIEW = 4;
+  VIEW_CHANGE_VALUE = 5;
+}
+
+enum BftValueType {
+  BFT_VALUE_TX = 0;
+  BFT_VALUE_TX_SET = 1;
+}
+
+message Bft
+{
+  int64 round_number = 1; //for sending again
+  BftMessageType msg_type = 2;
+  BftPrePrepare pre_prepare = 3;
+  BftPrepare prepare = 4;
+  BftCommit commit = 5;
+  BftViewChange view_change = 6;
+  BftNewView new_view = 7;
+  BftViewChangeValue view_change_value = 8;
+  string chain_id = 9;
+  string chain_hub = 10;
+}
+
+message BftSign
+{
+  Bft bft = 1;
+  Signature signature = 2;
+}
+
+
+message ConsensusProof {
+  ConsensusType ctype = 1;
+  BftProof pbft_proof=2;
+  TbftProof tbft_proof=3;
+}
+
+message BftProof
+{
+  repeated BftSign commits = 1;
+}
+
+message FeeConfig
+{
+  enum Type {
+    UNKNOWN = 0;
+    GAS_PRICE = 1;
+    BASE_RESERVE = 2;
+  };
+  int64 gas_price = 1;
+  int64 base_reserve = 2;
+}
+
+
+message NewViewRepondParam
+{
+  int64 view_number = 1;
+  BftPreparedSet prepared_set = 2;
+}
+
+
+
+// ================================for tbft=================================
+
+message TbftProof
+{
+  bytes proposal_hash =1;
+  // Prev height
+  int64 height=2;
+  int32 round=3;
+  repeated Signature commits = 4;
+}
+
+
+enum TbftMessageType {
+  TPFT_PROPOSE = 0;
+  TPFT_VOTE = 1;
+  TPFT_COMMITTED = 3;
+  TPFT_TIMEOUT = 4;
+}
+
+message Tbft
+{
+  TbftMessageType msg_type = 1;
+  TbftProposal proposal = 2;
+  TbftVote vote = 3;
+  TbftCommitted commit = 4;
+  TbftTimeoutInfo timeout=5;
+  string chain_id = 6;
+  string chain_hub = 7;
+}
+
+message TbftSign
+{
+  Tbft bft = 1;
+  Signature signature = 2;
+}
+
+
+//TBFT protocol
+message TbftProposal
+{
+  int64 height = 1;
+  int32 round = 2;
+  bool islock = 3;
+  int32 lock_round = 4;
+  repeated TbftSign lock_votes = 5;
+  bytes value = 6;
+  bytes value_digest = 7;
+}
+
+message TbftVoteProposalHash{
+  bytes hash = 1;
+}
+
+message TbftVote
+{
+  string sender = 1;
+  TbftVoteProposalHash proposal_hash = 2;
+  int64 height = 3;
+  int32 round = 4;
+  uint32 step = 5;
+}
+
+message TbftTimeoutInfo{
+  int64 timeval = 1;
+  int64 height = 2;
+  int32 round = 3;
+  uint32 step = 4;
+  string invoker = 5;
+}
+
+// ledger commit result,ledger send to consenses
+message TbftCommitted{
+  bytes hash = 1;
+  int64 height = 2;
+  uint64 interval = 3;
+  uint64 version = 4;
+  ValidatorSet validators = 5;
+  int64 timestamp = 6;
+  bytes value = 7;
+  bool  start = 8;
+}

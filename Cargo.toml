@@ -1,0 +1,54 @@
+[package]
+name = "geno"
+version = "2.5.1"
+edition = "2021"
+default-run = "geno"
+
+[workspace]
+members = [
+    "configure",
+    "protos",
+    "network",
+    "msp",
+    "utils",
+    "leveldb-rs",
+    "state",
+    "vm",
+    "storage/storage-db",
+    "storage/ledger-store",
+    "storage/state-store",
+]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+protos = { path = "./protos", version = "0.1.0" }
+configure = { path = "./configure", version = "0.1.0" }
+rusty-leveldb = { path = "./leveldb-rs", version = "0.3.6" }
+network = { path = "./network", version = "0.1.0" }
+msp = { path = "./msp", version = "0.1.0" }
+utils = { path = "./utils", version = "0.1.0" }
+state = { path = "./state", version = "0.1.0" }
+tokio = { version = "1.17.0", features = [
+    "io-util",
+    "net",
+    "parking_lot",
+    "rt-multi-thread",
+    "sync",
+    "time",
+    "macros",
+] }
+log = "0.4.14"
+log4rs = { version = "0.10.0", features = ["toml_format"] }
+parking_lot = "0.11"
+chrono = "0.4.19"
+protobuf = { version = "2.27.1", features = ["with-bytes"] }
+futures = "0.3.12"
+
+[target.'cfg(unix)'.dependencies]
+jemallocator = { version = "0.3.2", features = [
+    "profiling",
+    "unprefixed_malloc_on_supported_platforms",
+] }
+
+[build-dependencies]
+build-data = "0.1.3"
