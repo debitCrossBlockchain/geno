@@ -43,7 +43,7 @@ impl RocksDbDriver {
 
 #[cfg(not(target_os = "windows"))]
 impl KeyValueDb for RocksDbDriver {
-    fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
+    fn get(&mut self, key: &[u8]) -> Result<Option<Vec<u8>>> {
         match self.key_value_db.get(key) {
             Ok(value) => return Ok(value),
             Err(err) => return Err(anyhow::anyhow!("db get error:{}", err.to_string())),

@@ -26,7 +26,7 @@ impl Clone for MemoryDB {
 }
 
 impl KeyValueDb for MemoryDB {
-    fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
+    fn get(&mut self, key: &[u8]) -> Result<Option<Vec<u8>>> {
         if let Some(value) = self.key_value_db.get(key) {
             return Ok(Some(value.clone()));
         }

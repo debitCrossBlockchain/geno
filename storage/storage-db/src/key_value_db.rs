@@ -8,7 +8,7 @@ use std::{
 pub type KeyValueDB = Arc<Mutex<Box<dyn KeyValueDb + Send + 'static>>>;
 
 pub trait KeyValueDb {
-    fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>>;
+    fn get(&mut self, key: &[u8]) -> Result<Option<Vec<u8>>>;
     fn put(&mut self, key: Vec<u8>, value: Vec<u8>) -> Result<()>;
     fn delete(&mut self, key: Vec<u8>) -> Result<()>;
     fn write_batch(&mut self, mem_benchs: MemWriteBatch) -> Result<()>;
