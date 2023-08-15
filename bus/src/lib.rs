@@ -1,11 +1,15 @@
 extern crate threadpool;
 
+use std::time::Duration;
 use threadpool::ThreadPool;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use bytes::Bytes;
 use std::fmt::{Formatter, Error, Debug};
 use crossbeam_channel::{unbounded, Receiver, Sender};
+
+#[cfg(test)]
+mod test;
 
 /// Subscription to a pub/sub channel
 pub struct Subscription {
@@ -33,6 +37,17 @@ impl Drop for Subscription {
     fn drop(&mut self) {
         self.bus.unregister(self);
     }
+}
+
+pub struct SubActivator{
+	sub: Subscription
+}
+impl SubActivator{
+	pub fn activate<F>(self, func: F) -> Subscription
+	where F: FnMut(Bytes) + 'static + Send{
+		self.sub.bus.activate(&self.sub.channel_id, self.sub.id, func);
+		self.sub
+	}
 }
 
 struct SubMessage {
@@ -88,6 +103,10 @@ struct InnerBus{
 	next_id: u64,
 	thread_pool: Arc<ThreadPool>
 }
+
+unsafe impl Send for InnerBus{}
+unsafe impl Sync for InnerBus{}
+
 #[derive(Clone)]
 pub struct Bus{
 	inner: Arc<Mutex<InnerBus>>
@@ -136,10 +155,12 @@ impl Bus{
 	}
 	
 	#[allow(unused_assignments)]
-	pub fn lazy_subscribe(&self, channel: &str) -> Subscription{
+	pub fn lazy_subscribe(&self, channel: &str) -> SubActivator{
 		let mut func = Some(|_|{});//used to give type info to 'func'
 		func = None;
-		self.internal_subscribe(channel, func)	
+        SubActivator{
+            sub: self.internal_subscribe(channel, func),
+        }		
 	}
 
 	fn activate<F>(&self, channel: &str, id: u64, func: F)
@@ -173,7 +194,7 @@ impl Bus{
 		if !sub_message.running.set(true){//if not currently running
 			let thread_running = sub_message.running.clone();
 			if let Some(func) = sub_message.func.clone(){
-				let bus = self.clone();
+                let bus = self.clone();
 				let channel = channel.to_string();
 				let id = id.clone();
 				pool.execute(move ||{	
@@ -184,18 +205,17 @@ impl Bus{
 					let mut running = true;
 					while running{
 						let mut notification_message: Bytes = Bytes::new();
-						{
-                            let temp_bus = bus.clone();
-							let mut inner = temp_bus.inner.lock().unwrap();
+						{  
+                            let mut inner = bus.inner.lock().unwrap();
 							if let Some(subs) = inner.channels.get_mut(&channel){
 								if let Some(sub_message) = subs.get_mut(&id){
-                                   if let Ok(msg) = sub_message.receiver.recv() {
+                                   if let Ok(msg) = sub_message.receiver.recv_timeout(Duration::from_millis(500)) {
                                             notification_message.clone_from(&msg);
                                    }    
 								}
 							}
 						}//unlock 'inner'
-						if  notification_message.len()!=0{
+						if !notification_message.is_empty(){
 							func(notification_message);
 						}else{
 							running = false;
