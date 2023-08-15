@@ -6,6 +6,7 @@ default-run = "geno"
 
 [workspace]
 members = [
+    "bus",
     "configure",
     "protos",
     "network",

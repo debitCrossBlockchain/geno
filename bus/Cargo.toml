@@ -1,0 +1,21 @@
+[package]
+name = "bus"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.17.0", features = [
+    "io-util",
+    "net",
+    "parking_lot",
+    "rt",
+    "sync",
+    "time",
+    "macros",
+    "rt-multi-thread",
+] }
+threadpool = "0.1.4"
+crossbeam-channel = "0.5"
+bytes = "1.4.0"
