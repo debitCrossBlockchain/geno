@@ -19,3 +19,6 @@ tokio = { version = "1.17.0", features = [
 threadpool = "0.1.4"
 crossbeam-channel = "0.5"
 bytes = "1.4.0"
+deadline = "0.2"
+rand = { version = "0.8", default-features = false, features = ["getrandom", "small_rng"] }
+once_cell = { version = "1", features = ["parking_lot"] }
