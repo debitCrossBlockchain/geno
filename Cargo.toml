@@ -12,6 +12,7 @@ members = [
     "network",
     "msp",
     "utils",
+    "utils/merkletree",
     "leveldb-rs",
     "state",
     "vm",
