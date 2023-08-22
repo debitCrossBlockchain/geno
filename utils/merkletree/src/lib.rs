@@ -169,7 +169,7 @@ impl Tree {
         self.merkle_root = self.base.lock().unwrap().last_mut().unwrap()[0].get_hash();
     }
 
-    fn build_base_leafs(&mut self, base_leafs: Vec<Vec<u8>>) {
+    pub fn build_base_leafs(&mut self, base_leafs: Vec<Vec<u8>>) {
         let mut new_nodes: Vec<Box<Node>> = Vec::new();
         for leaf in base_leafs {
             let mut new_node = Box::new(Node::new());
@@ -180,7 +180,7 @@ impl Tree {
         self.node_list.lock().unwrap().append(&mut new_nodes);
     }
 
-    fn verify(&self, hash: Vec<u8>) -> bool {
+    pub fn verify(&self, hash: Vec<u8>) -> bool {
         let mut el_node: Option<Box<Node>> = None;
         let tem_hash = hash.clone();
         let mut act_hash = hash;
@@ -218,7 +218,7 @@ impl Tree {
         }
     }
 
-    fn hash_merkle_branches(left: Vec<u8>, right: Vec<u8>) -> Vec<u8> {
+    pub fn hash_merkle_branches(left: Vec<u8>, right: Vec<u8>) -> Vec<u8> {
         let hash_str = format!(
             "{}{}",
             hash_bytes_to_string(left.as_slice()),
@@ -227,7 +227,7 @@ impl Tree {
         hash_crypto(hex_str_to_bytes(hash_str.as_str()).unwrap().as_slice())
     }
 
-    fn build_audit_trail(
+    pub fn build_audit_trail(
         &mut self,
         audit_trail: &mut Vec<MerkleProofHash>,
         parent: &mut &Box<Node>,
@@ -257,7 +257,7 @@ impl Tree {
         }
     }
 
-    fn verify_audit(
+    pub fn verify_audit(
         &self,
         root_hash: Vec<u8>,
         leaf_hash: Vec<u8>,
@@ -278,7 +278,7 @@ impl Tree {
         return root_hash == test_hash;
     }
 
-    fn audit_proof(&mut self, leaf_hash: Vec<u8>, audit_trail: &mut Vec<MerkleProofHash>) {
+    pub fn audit_proof(&mut self, leaf_hash: Vec<u8>, audit_trail: &mut Vec<MerkleProofHash>) {
         let leaf_node: Arc<Mutex<Box<Node>>> = Arc::new(Mutex::new(Box::new(Node::new())));
         let act_hash = Vec::from(leaf_hash);
         let len = (self.base.lock().unwrap().first().unwrap().len());
@@ -296,33 +296,37 @@ impl Tree {
         }
     }
 
-    // fn test_verify_audit(&self) {
-    //     let hash = Self::hash_merkle_branches(
-    //         "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
-    //         "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
-    //     );
-    //     let mut audit_trail: Vec<MerkleProofHash> = Vec::new();
-    //     self.audit_proof(
-    //         "4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5",
-    //         &mut audit_trail,
-    //     );
-    //     self.verify_audit(
-    //         "a901f842b0016f1e350d20b751851a7179e26dfbb74b213c7a92d37f3c4fbb6c",
-    //         "4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5",
-    //         &audit_trail,
-    //     );
-    // }
 }
 
-// fn main() {
-//     let mut tree = Tree::new();
-//     let base_leafs = vec![
-//         "leaf1".to_string(),
-//         "leaf2".to_string(),
-//         "leaf3".to_string(),
-//         "leaf4".to_string(),
-//     ];
-//     tree.build_base_leafs(base_leafs);
-//     tree.build_tree();
-//     tree.test_verify_audit();
-// }
+#[test]
+fn test_tree(){
+
+    let mut tree = Tree::new();
+    let base_leafs = vec![
+        hex_str_to_bytes("leaf1").unwrap(),
+        hex_str_to_bytes("leaf2").unwrap(),
+        hex_str_to_bytes("leaf3").unwrap(),
+        hex_str_to_bytes("leaf4").unwrap(),
+    ];
+    tree.build_base_leafs(base_leafs);
+    tree.build_tree();
+   
+
+    let hash = Tree::hash_merkle_branches(
+        hex_str_to_bytes("5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9").unwrap(),
+        hex_str_to_bytes("6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b").unwrap(),
+    );
+    let mut audit_trail: Vec<MerkleProofHash> = Vec::new();
+    self.audit_proof(
+        hex_str_to_bytes("4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5").unwrap(),
+        &mut audit_trail,
+    );
+    self.verify_audit(
+        hex_str_to_bytes("a901f842b0016f1e350d20b751851a7179e26dfbb74b213c7a92d37f3c4fbb6c").unwrap(),
+        hex_str_to_bytes("4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5").unwrap(),
+        &audit_trail,
+    );
+
+}
+
+
