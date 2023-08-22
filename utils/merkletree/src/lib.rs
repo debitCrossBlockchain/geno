@@ -1,15 +1,22 @@
-use std::{collections::LinkedList, sync::{Mutex, Arc}};
+use msp::{bytes_to_hex_str, hex_str_to_bytes};
+use std::ops::DerefMut;
+use std::{
+    borrow::BorrowMut,
+    collections::LinkedList,
+    sync::{Arc, Mutex},
+};
+use utils::general::{hash_bytes_to_string, hash_crypto};
 
 #[derive(Clone)]
 struct Node {
     parent: Option<Box<Node>>,
     children: [Option<Box<Node>>; 2],
-    hash_str: String,
+    hash: Vec<u8>,
 }
 
-impl  PartialEq for Node {
+impl PartialEq for Node {
     fn eq(&self, other: &Self) -> bool {
-        self.parent == other.parent && self.children == other.children && self.hash_str == other.hash_str
+        self.parent == other.parent && self.children == other.children && self.hash == other.hash
     }
 }
 
@@ -18,12 +25,12 @@ impl Node {
         Node {
             parent: None,
             children: [None, None],
-            hash_str: String::new(),
+            hash: Vec::new(),
         }
     }
 
-    pub fn set_hash(&mut self, hash_str: String) {
-        self.hash_str = hash_str;
+    pub fn set_hash(&mut self, hash: Vec<u8>) {
+        self.hash.clone_from(&hash);
     }
 
     pub fn get_parent(&self) -> Option<&Box<Node>> {
@@ -61,8 +68,8 @@ impl Node {
         }
     }
 
-    pub fn get_hash(&self) -> &str {
-        &self.hash_str
+    pub fn get_hash(&self) -> Vec<u8> {
+        self.hash.clone()
     }
 
     pub fn check_dir(&self) -> bool {
@@ -80,23 +87,47 @@ impl Node {
     }
 }
 
+pub struct MerkleProofHash {
+    hash: Vec<u8>,
+    direction: Branch,
+}
+
+#[derive(PartialEq)]
+pub enum Branch {
+    Left,
+    Right,
+    OldRoot,
+}
+
+impl MerkleProofHash {
+    pub fn new(hash: Vec<u8>, direction: Branch) -> MerkleProofHash {
+        MerkleProofHash {
+            hash: hash,
+            direction: direction,
+        }
+    }
+}
+
 struct Tree {
     base: Arc<Mutex<Vec<Vec<Box<Node>>>>>,
-    merkle_root: String,
+    merkle_root: Vec<u8>,
+    node_list: Arc<Mutex<Vec<Box<Node>>>>,
 }
 
 impl Tree {
-    fn new() -> Tree {
+    pub fn new() -> Tree {
         Tree {
             base: Arc::new(Mutex::new(Vec::new())),
-            merkle_root: String::new(),
+            merkle_root: Vec::new(),
+            node_list: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
-    fn make_binary(&mut self) -> usize {
-        let vect_size = (self.base.lock().unwrap().last_mut().unwrap()).len();
+    pub fn make_binary(&mut self) -> usize {
+        let vect_size = (self.base.lock().unwrap().last().unwrap()).len();
         if vect_size % 2 != 0 {
-            (self.base.lock().unwrap().last_mut().unwrap()).push(self.base.lock().unwrap().last_mut().unwrap()[vect_size - 1].clone());
+            (self.base.lock().unwrap().last_mut().unwrap())
+                .push(self.base.lock().unwrap().last_mut().unwrap()[vect_size - 1].clone());
             return vect_size + 1;
         }
         vect_size
@@ -109,15 +140,15 @@ impl Tree {
 
             for i in (0..vect_size).step_by(2) {
                 let mut new_parent = Box::new(Node::new());
-                new_parent.set_parent(self.base.lock().unwrap().last_mut().unwrap()[i].clone());
-                new_parent.set_parent(self.base.lock().unwrap().last_mut().unwrap()[i + 1].clone());
+                (self.base.lock().unwrap().last_mut().unwrap()[i].set_parent(new_parent.clone()));
+                (self.base.lock().unwrap().last_mut().unwrap()[i + 1]
+                    .set_parent(new_parent.clone()));
 
-                let hash_str = format!(
-                    "{}{}",
-                    self.base.lock().unwrap().last().unwrap()[i].get_hash(),
-                    self.base.lock().unwrap().last().unwrap()[i + 1].get_hash()
+                let hash = Self::hash_merkle_branches(
+                    (self.base.lock().unwrap().last().unwrap()[i].get_hash()),
+                    (self.base.lock().unwrap().last().unwrap()[i + 1].get_hash()),
                 );
-                new_parent.set_hash(hash_str);
+                new_parent.set_hash(hash);
 
                 new_parent.set_children(
                     self.base.lock().unwrap().last().unwrap()[i].clone(),
@@ -125,29 +156,20 @@ impl Tree {
                 );
 
                 new_nodes.push(new_parent);
-
             }
 
-            //self.print_tree_level(&new_nodes);
+            (self.node_list.lock().unwrap().append(&mut new_nodes));
             (self.base.lock().unwrap().push(new_nodes));
 
-
-            if (self.base.lock().unwrap().last_mut().unwrap().len()) <= 1 {
+            if (self.base.lock().unwrap().last().unwrap().len()) <= 1 {
                 break;
             }
         }
 
-        self.merkle_root = self.base.lock().unwrap().last_mut().unwrap()[0].get_hash().to_string();
+        self.merkle_root = self.base.lock().unwrap().last_mut().unwrap()[0].get_hash();
     }
 
-    fn print_tree_level(&self, v: &Vec<Box<Node>>) {
-        println!();
-        for el in v {
-            println!("{}", el.get_hash());
-        }
-    }
-
-    fn build_base_leafs(&mut self, base_leafs: Vec<String>) {
+    fn build_base_leafs(&mut self, base_leafs: Vec<Vec<u8>>) {
         let mut new_nodes: Vec<Box<Node>> = Vec::new();
         for leaf in base_leafs {
             let mut new_node = Box::new(Node::new());
@@ -155,15 +177,16 @@ impl Tree {
             new_nodes.push(new_node);
         }
 
-        self.base.lock().unwrap().push(new_nodes);
+        self.node_list.lock().unwrap().append(&mut new_nodes);
     }
 
-    fn verify(&self, hash: &str) -> bool {
+    fn verify(&self, hash: Vec<u8>) -> bool {
         let mut el_node: Option<Box<Node>> = None;
-        let act_hash = hash.to_string();
-
-        for i in 0..(self.base.lock().unwrap().first().unwrap().len()) {
-            if (self.base.lock().unwrap().first().unwrap()[i].get_hash()) == hash {
+        let tem_hash = hash.clone();
+        let mut act_hash = hash;
+        let len = (self.base.lock().unwrap().first().unwrap().len());
+        for i in 0..len {
+            if (self.base.lock().unwrap().first().unwrap()[i].get_hash()) == tem_hash {
                 el_node = Some(self.base.lock().unwrap().first().unwrap()[i].clone());
             }
         }
@@ -172,90 +195,104 @@ impl Tree {
             return false;
         }
 
-        println!("Hash verify: {}", act_hash);
-
         let mut el_node = el_node.unwrap();
         loop {
+            if el_node.check_dir() == false {
+                act_hash =
+                    Self::hash_merkle_branches(act_hash, el_node.get_sibling().unwrap().get_hash());
+            } else {
+                act_hash =
+                    Self::hash_merkle_branches(el_node.get_sibling().unwrap().get_hash(), act_hash);
+            }
+
             match el_node.get_parent() {
                 Some(p) => el_node = p.clone(),
                 None => break,
             }
         }
 
-        if act_hash == self.merkle_root {
+        if tem_hash == self.merkle_root {
             return true;
         } else {
             return false;
         }
     }
 
-
-    fn hash_merkle_branches(left: &str, right: &str) -> String {
-        format!("{}{}", left, right)
+    fn hash_merkle_branches(left: Vec<u8>, right: Vec<u8>) -> Vec<u8> {
+        let hash_str = format!(
+            "{}{}",
+            hash_bytes_to_string(left.as_slice()),
+            hash_bytes_to_string(right.as_slice())
+        );
+        hash_crypto(hex_str_to_bytes(hash_str.as_str()).unwrap().as_slice())
     }
 
     fn build_audit_trail(
-        &self,
+        &mut self,
         audit_trail: &mut Vec<MerkleProofHash>,
-        parent: &Box<Node>,
-        child: &Box<Node>,
+        parent: &mut &Box<Node>,
+        child: &mut &Box<Node>,
     ) {
-        if let Some(next_child) = parent.get_children(0) {
-            if next_child.eq(child) {
-                audit_trail.push(MerkleProofHash {
-                    hash: parent.get_children(1).unwrap().get_hash().to_string(),
-                    direction: MerkleProofHashBranch::Left,
-                });
+        let mut direction = Branch::OldRoot;
+        let mut next_child: Option<Box<Node>> = None;
+        if let Some(children) = parent.get_children(0) {
+            if children.eq(child) {
+                next_child = Some(parent.get_children(1).unwrap().clone());
+                direction = Branch::Left;
             } else {
-                audit_trail.push(MerkleProofHash {
-                    hash: parent.get_children(0).unwrap().get_hash().to_string(),
-                    direction: MerkleProofHashBranch::Right,
-                });
+                next_child = Some(parent.get_children(0).unwrap().clone());
+                direction = Branch::Right;
             }
-        }
 
-        if let Some(p) = parent.get_parent() {
-            self.build_audit_trail(audit_trail, p, parent);
+            audit_trail.push(MerkleProofHash {
+                hash: next_child.unwrap().get_hash(),
+                direction: direction,
+            });
+
+            if let Some(c) = (&mut child.get_parent()).as_mut() {
+                if let Some(p) = c.get_parent().as_mut() {
+                    self.build_audit_trail(audit_trail, p, c);
+                }
+            }
         }
     }
 
     fn verify_audit(
         &self,
-        root_hash: &str,
-        leaf_hash: &str,
+        root_hash: Vec<u8>,
+        leaf_hash: Vec<u8>,
         audit_trail: &Vec<MerkleProofHash>,
     ) -> bool {
         if audit_trail.is_empty() {
             return false;
         }
 
-        let mut test_hash = leaf_hash.to_string();
-
+        let mut test_hash = Vec::from(leaf_hash);
         for proof_hash in audit_trail {
-            if proof_hash.direction == MerkleProofHashBranch::Left {
-                test_hash = Self::hash_merkle_branches(&test_hash, &proof_hash.hash);
+            if proof_hash.direction == Branch::Left {
+                test_hash = Self::hash_merkle_branches(test_hash, proof_hash.hash.clone());
             } else {
-                test_hash = Self::hash_merkle_branches(&proof_hash.hash, &test_hash);
+                test_hash = Self::hash_merkle_branches(proof_hash.hash.clone(), test_hash);
             }
         }
-
         return root_hash == test_hash;
     }
 
-    fn audit_proof(&self, leaf_hash: &str, audit_trail: &mut Vec<MerkleProofHash>) {
-        let mut leaf_node: Option<Box<Node>> = None;
-        let act_hash = leaf_hash.to_string();
-
-        for i in 0..(self.base.lock().unwrap().first().unwrap().len()) {
-            if (self.base.lock().unwrap().first().unwrap()[i].get_hash()) == leaf_hash {
-                leaf_node = Some(self.base.lock().unwrap().first().unwrap()[i].clone());
+    fn audit_proof(&mut self, leaf_hash: Vec<u8>, audit_trail: &mut Vec<MerkleProofHash>) {
+        let leaf_node: Arc<Mutex<Box<Node>>> = Arc::new(Mutex::new(Box::new(Node::new())));
+        let act_hash = Vec::from(leaf_hash);
+        let len = (self.base.lock().unwrap().first().unwrap().len());
+        let tem_hash = act_hash.clone();
+        for i in 0..len {
+            if let Some(first) = (self.base.lock().unwrap().first()) {
+                if (first[i].get_hash()) == tem_hash {
+                    (*leaf_node.lock().unwrap()).clone_from(&first[i]) ;
+                }
             }
         }
 
-        if let Some(leaf_node) = leaf_node {
-            if let Some(parent) = leaf_node.get_parent() {
-                self.build_audit_trail(audit_trail, parent, &leaf_node);
-            }
+        if let Some(parent) = (leaf_node.clone().lock().as_mut()).expect("REASON").get_parent().as_mut() {
+            self.build_audit_trail(audit_trail, parent, &mut (&*leaf_node.lock().unwrap()));
         }
     }
 
@@ -275,17 +312,6 @@ impl Tree {
     //         &audit_trail,
     //     );
     // }
-}
-
-struct MerkleProofHash {
-    hash: String,
-    direction: MerkleProofHashBranch,
-}
-
-#[derive(PartialEq)]
-enum MerkleProofHashBranch {
-    Left,
-    Right,
 }
 
 // fn main() {
