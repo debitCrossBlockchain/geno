@@ -123,7 +123,7 @@ impl EvmExecutor {
                 if let Some(ref code) = account.info.code {
                     if !code.is_empty() && !db.contracts.contains_key(&account.info.code_hash) {
                         db.contracts.insert(account.info.code_hash, code.clone());
-                        post_state.add_bytecode(account.info.code_hash, code.clone());
+                        post_state.add_bytecode(account.info.code_hash, address, code.clone());
                     }
                 }
 
@@ -131,7 +131,6 @@ impl EvmExecutor {
                 // and get new account that was just inserted. new account mut ref is used for
                 // inserting storage
                 let cached_account = match db.accounts.entry(address) {
-                    // 缓存中此账户不存在,创建账户
                     Entry::Vacant(entry) => {
                         let entry = entry.insert(Default::default());
                         entry.info = account.info.clone();

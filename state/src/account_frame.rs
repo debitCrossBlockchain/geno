@@ -1,5 +1,4 @@
 use crate::{cache_state::StateMapActionType, TrieHash, TrieReader, TrieWriter};
-
 use log::*;
 use protobuf::Message;
 use protos::{
@@ -222,6 +221,14 @@ impl AccountFrame {
 
         self.metadata.insert(outer_key, dc);
         return true;
+    }
+
+    pub fn clear_metadata(&mut self) -> anyhow::Result<()> {
+        let all = self.get_all_metadata()?;
+        for (key, _) in all.iter() {
+            self.delete_metadata(key.clone());
+        }
+        Ok(())
     }
 
     pub fn get_all_metadata(&mut self) -> anyhow::Result<HashMap<Vec<u8>, KeyPair>> {

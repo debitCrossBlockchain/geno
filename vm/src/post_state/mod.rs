@@ -1,7 +1,7 @@
 use revm::primitives::{
     hash_map::{self, Entry},
-    AccountInfo, Address, Bytecode, ExecutionResult, Log, ResultAndState, TransactTo, TxEnv, B256,
-    U256,
+    AccountInfo, Address, Bytecode, ExecutionResult, Log, ResultAndState, TransactTo, TxEnv, B160,
+    B256, U256,
 };
 use state::{AccountFrame, CacheState};
 use std::collections::{BTreeMap, BTreeSet};
@@ -40,7 +40,7 @@ pub struct PostState {
     /// This map only contains old values for storage slots.
     storage_changes: StorageChanges,
     /// New code created during the execution
-    bytecode: BTreeMap<B256, Bytecode>,
+    bytecode: BTreeMap<B256, (B160, Bytecode)>,
     /// The receipt(s) of the executed transaction(s).
     receipts: BTreeMap<u64, Vec<Receipt>>,
 }
@@ -100,13 +100,15 @@ impl PostState {
             .insert(block_number, address, Some(old), Some(new));
     }
 
-    pub fn add_bytecode(&mut self, code_hash: B256, bytecode: Bytecode) {
+    pub fn add_bytecode(&mut self, code_hash: B256, address: B160, bytecode: Bytecode) {
         // Assumption: `insert` will override the value if present, but since the code hash for a
         // given bytecode will always be the same, we are overriding with the same value.
         //
         // In other words: if this entry already exists, replacing the bytecode will replace with
         // the same value, which is wasteful.
-        self.bytecode.entry(code_hash).or_insert(bytecode);
+        self.bytecode
+            .entry(code_hash)
+            .or_insert((address, bytecode));
     }
 
     /// Add changed storage values to the post-state.
@@ -145,14 +147,36 @@ impl PostState {
         tracing::trace!(target: "post_state", "Process storages in block {}", block_number);
         for (address, storage) in self.storage.into_iter() {
             let geno_address = AddressConverter::from_evm_address(address);
-            let geno_account = Self::get_geno_account(&state, &geno_address);
+            let mut geno_account = match Self::get_geno_account(&state, &geno_address)? {
+                Some(geno_account) => geno_account,
+                None => {
+                    tracing::error!("post_state Process storages failed,get geno account error");
+                    panic!("post_state Process storages failed,get geno account error");
+                }
+            };
+
             if storage.wiped() {
                 tracing::trace!(target: "post_state", "Wiping storage from state {} in block {}", geno_address,block_number);
+                if let Err(e) = geno_account.clear_metadata() {
+                    tracing::error!("post_state Process storages failed,clear metadata error");
+                    panic!("post_state Process storages failed,clear metadata error");
+                }
             }
 
             for (key, value) in storage.storage {
                 tracing::trace!(target: "post_state", "Updating state storage {} {:?} in block {}", geno_address,StorageConverter::from_evm_storage(key),block_number);
+
+                if value != U256::ZERO {
+                    if !geno_account.upsert_contract_metadata(
+                        &StorageConverter::from_evm_storage(key),
+                        &StorageConverter::from_evm_storage(value),
+                    ) {
+                        tracing::error!("post_state Process storages failed,update storage error");
+                        panic!("post_state Process storages failed,update storage error");
+                    }
+                }
             }
+            state.upsert(&geno_address, geno_account);
         }
 
         // process accounts
@@ -170,7 +194,7 @@ impl PostState {
                     // create account
                     if account.nonce != 0 {
                         tracing::error!(target: "post_state", "Create account but nonce != 0 {}",geno_address);
-                        panic!("post_state create account but nonce != 0");
+                        panic!("post_state create account but nonce != 0 {}", geno_address);
                     }
                     let geno_account = Self::create_geno_account(geno_address.clone(), &account);
                     state.upsert(&geno_address, geno_account);
@@ -183,8 +207,21 @@ impl PostState {
 
         // process contracts code
         tracing::trace!(target: "post_state", "Process contracts code in block {}", block_number);
-        for (hash, bytecode) in self.bytecode.into_iter() {
+        for (hash, (address, bytecode)) in self.bytecode.into_iter() {
             tracing::trace!(target: "post_state", "Process contract code hash {} in block {}",hash, block_number);
+            let geno_address = AddressConverter::from_evm_address(address);
+            match Self::get_geno_account(&state, &geno_address)? {
+                Some(mut geno_account) => {
+                    let mut contract = geno_account.get_contract();
+                    contract.set_code(bytecode.bytecode.to_vec());
+                    geno_account.set_contract(&contract);
+                    state.upsert(&geno_address, geno_account);
+                }
+                None => {
+                    tracing::error!("post_state Process contract failed,get geno account error");
+                    panic!("post_state Process contract failed,get geno account error");
+                }
+            }
         }
 
         Ok(())
