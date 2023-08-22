@@ -1,5 +1,4 @@
 use crate::{cache_state::StateMapActionType, TrieHash, TrieReader, TrieWriter};
-
 use log::*;
 use protobuf::Message;
 use protos::{
@@ -15,7 +14,7 @@ where
     T: Clone,
 {
     pub action: StateMapActionType,
-    pub data: T,
+    pub data: Option<T>,
 }
 
 impl<T> Clone for DataCache<T>
@@ -56,11 +55,22 @@ impl Clone for AccountFrame {
     }
 }
 
+impl TryFrom<Account> for AccountFrame {
+    type Error = anyhow::Error;
+    fn try_from(account: Account) -> anyhow::Result<Self> {
+        let _ = u128::from_str_radix(account.get_balance(), 10)?;
+        Ok(AccountFrame {
+            account,
+            metadata: Default::default(),
+        })
+    }
+}
+
 impl AccountFrame {
-    pub fn new(address: String, balance: u64) -> AccountFrame {
+    pub fn new(address: String, balance: u128) -> AccountFrame {
         let mut account = Account::new();
         account.set_address(address);
-        account.set_balance(balance);
+        account.set_balance(balance.to_string());
 
         AccountFrame {
             account,
@@ -103,43 +113,37 @@ impl AccountFrame {
         self.account.clone()
     }
 
-    pub fn increase_nonce(&mut self) -> Option<u64> {
-        if let Some(account_new_nonce) = self.account.get_nonce().checked_add(1) {
-            self.account.set_nonce(account_new_nonce);
-            return Some(account_new_nonce);
-        }
-        None
+    pub fn balance(&self) -> u128 {
+        u128::from_str_radix(self.account.get_balance(), 10).unwrap_or(0)
     }
 
-    pub fn balance(&self) -> u64 {
-        self.account.get_balance()
+    pub fn set_balance(&mut self, amount: u128) {
+        self.account.set_balance(amount.to_string());
     }
 
-    pub fn set_balance(&mut self, amount: u64) {
-        self.account.set_balance(amount);
-    }
-
-    pub fn add_balance(&mut self, amount: u64) -> Option<u64> {
-        if let Some(account_new_balance) = self.account.get_balance().checked_add(amount) {
-            self.account.set_balance(account_new_balance);
+    pub fn add_balance(&mut self, amount: u128) -> Option<u128> {
+        let balance = self.balance();
+        if let Some(account_new_balance) = balance.checked_add(amount) {
+            self.set_balance(account_new_balance);
             return Some(account_new_balance);
         }
         None
     }
 
-    pub fn sub_balance(&mut self, amount: u64) -> Option<u64> {
-        if let Some(account_new_balance) = self.account.get_balance().checked_sub(amount) {
-            self.account.set_balance(account_new_balance);
+    pub fn sub_balance(&mut self, amount: u128) -> Option<u128> {
+        let balance = self.balance();
+        if let Some(account_new_balance) = balance.checked_sub(amount) {
+            self.set_balance(account_new_balance);
             return Some(account_new_balance);
         }
         None
     }
 
     pub fn is_empty(&self) -> bool {
-        self.account.get_balance() == 0
+        self.balance() == 0
             && self.account.get_nonce() == 0
             && self.account.get_contract().get_code().is_empty()
-            && self.metadata.len() == 0
+            && self.metadata.is_empty()
     }
 
     pub fn get_metadata(&mut self, outer_key: &[u8]) -> anyhow::Result<Option<KeyPair>> {
@@ -162,8 +166,8 @@ impl AccountFrame {
                                 Ok(keypair) => {
                                     // insert canche
                                     let dc: DataCache<KeyPair> = DataCache {
-                                        action: StateMapActionType::READ,
-                                        data: keypair.clone(),
+                                        action: StateMapActionType::HOTLOAD,
+                                        data: Some(keypair.clone()),
                                     };
                                     self.metadata.insert(outer_key.to_vec(), dc);
 
@@ -181,8 +185,8 @@ impl AccountFrame {
                 }
             }
             Some(dc) => match dc.action {
-                StateMapActionType::ADD | StateMapActionType::MODIFY | StateMapActionType::READ => {
-                    return Ok(Some(dc.data.clone()))
+                StateMapActionType::UPSERT | StateMapActionType::HOTLOAD => {
+                    return Ok(dc.data.clone())
                 }
                 StateMapActionType::DELETE => return Ok(None),
                 StateMapActionType::MAX => return Err(anyhow::anyhow!("StateMapActionType error")),
@@ -190,7 +194,7 @@ impl AccountFrame {
         }
     }
 
-    pub fn set_metadata(&mut self, outer_key: Vec<u8>, kp: KeyPair) -> bool {
+    pub fn upsert_metadata(&mut self, outer_key: Vec<u8>, kp: KeyPair) -> bool {
         if TRIE_KEY_MAX_LEN <= outer_key.len() {
             error!(
                 "Key({:?}) length({}) overflow,max allow len({})",
@@ -201,12 +205,30 @@ impl AccountFrame {
             return false;
         }
         let dc: DataCache<KeyPair> = DataCache {
-            action: StateMapActionType::ADD,
-            data: (kp),
+            action: StateMapActionType::UPSERT,
+            data: Some(kp),
         };
 
         self.metadata.insert(outer_key, dc);
         true
+    }
+
+    pub fn delete_metadata(&mut self, outer_key: Vec<u8>) -> bool {
+        let dc: DataCache<KeyPair> = DataCache {
+            action: StateMapActionType::DELETE,
+            data: None,
+        };
+
+        self.metadata.insert(outer_key, dc);
+        return true;
+    }
+
+    pub fn clear_metadata(&mut self) -> anyhow::Result<()> {
+        let all = self.get_all_metadata()?;
+        for (key, _) in all.iter() {
+            self.delete_metadata(key.clone());
+        }
+        Ok(())
     }
 
     pub fn get_all_metadata(&mut self) -> anyhow::Result<HashMap<Vec<u8>, KeyPair>> {
@@ -241,23 +263,18 @@ impl AccountFrame {
         Ok(keypairs)
     }
 
-    pub fn delete_metadata(&mut self, outer_key: Vec<u8>, kp: &KeyPair) -> bool {
-        let dc: DataCache<KeyPair> = DataCache {
-            action: StateMapActionType::DELETE,
-            data: (kp.clone()),
-        };
-
-        self.metadata.insert(outer_key, dc);
-        return true;
-    }
-
-    pub fn nonce_increase(&mut self) {
+    pub fn nonce_increase(&mut self) -> u64 {
         let new_nonce: u64 = self.account.get_nonce() + 1;
         self.account.set_nonce(new_nonce);
+        new_nonce
     }
 
     pub fn nonce(&self) -> u64 {
         self.account.get_nonce()
+    }
+
+    pub fn set_nonce(&mut self, new_nonce: u64) {
+        self.account.set_nonce(new_nonce);
     }
 
     pub fn metadatas_hash(&self) -> Vec<u8> {
@@ -281,14 +298,15 @@ impl AccountFrame {
             let action = v.action;
 
             match action {
-                StateMapActionType::ADD | StateMapActionType::MODIFY => {
-                    let kp_bytes = v.data.write_to_bytes().unwrap();
-                    datas.insert(k, Some(kp_bytes));
+                StateMapActionType::UPSERT => {
+                    if let Some(kp_bytes) = v.data {
+                        datas.insert(k, Some(kp_bytes.write_to_bytes().unwrap()));
+                    }
                 }
                 StateMapActionType::DELETE => {
                     datas.insert(k, None);
                 }
-                StateMapActionType::READ => {}
+                StateMapActionType::HOTLOAD => {}
                 StateMapActionType::MAX => {}
             }
         }
@@ -315,13 +333,20 @@ impl AccountFrame {
         Ok(())
     }
 
-    pub fn set_contract_metadata(&mut self, inner_key: &[u8], vbytes: &[u8]) -> bool {
+    pub fn upsert_contract_metadata(&mut self, inner_key: &[u8], value_bytes: &[u8]) -> bool {
         let outer_key =
             compose_metadata_key(CONTRACT_META_PREFIX, self.account.get_address(), inner_key);
         let mut kp = KeyPair::default();
         kp.set_key(inner_key.to_vec());
-        kp.set_value(vbytes.to_vec());
-        self.set_metadata(outer_key, kp)
+        kp.set_value(value_bytes.to_vec());
+        self.upsert_metadata(outer_key, kp)
+    }
+
+    pub fn delete_contract_metadata(&mut self, inner_key: &[u8]) -> bool {
+        let outer_key =
+            compose_metadata_key(CONTRACT_META_PREFIX, self.account.get_address(), inner_key);
+
+        self.delete_metadata(outer_key)
     }
 
     pub fn get_contract_metadata(&mut self, inner_key: &[u8]) -> anyhow::Result<Option<Vec<u8>>> {
@@ -345,15 +370,8 @@ impl AccountFrame {
 
     pub fn deserialize(data: &[u8]) -> anyhow::Result<AccountFrame> {
         match ProtocolParser::deserialize::<Account>(data) {
-            Ok(account) => return Ok(AccountFrame::from_account_raw(account)),
+            Ok(account) => return AccountFrame::try_from(account),
             Err(err) => return Err(err),
-        }
-    }
-
-    pub fn from_account_raw(account: Account) -> AccountFrame {
-        AccountFrame {
-            account,
-            metadata: Default::default(),
         }
     }
 }

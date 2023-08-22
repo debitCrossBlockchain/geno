@@ -1,4 +1,3 @@
-use crypto::{digest::Digest, sha3::Sha3};
 use local_ip_address::local_ip;
 use message_io::network::Endpoint;
 use protobuf::Message;
@@ -19,12 +18,6 @@ pub const PEER_DB_COUNT: usize = 5000;
 pub struct P2PUtils;
 
 impl P2PUtils {
-    pub fn get_hash(value: &[u8]) -> String {
-        let mut hasher = Sha3::sha3_256();
-        hasher.input(value);
-        hasher.result_str()
-    }
-
     pub fn generate_hash(name: &str, ntype: i32, seq: u64) -> String {
         format!(
             "{}-{}-{}-{}",
