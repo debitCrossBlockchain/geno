@@ -317,11 +317,11 @@ fn test_tree(){
         hex_str_to_bytes("6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b").unwrap(),
     );
     let mut audit_trail: Vec<MerkleProofHash> = Vec::new();
-    self.audit_proof(
+    tree.audit_proof(
         hex_str_to_bytes("4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5").unwrap(),
         &mut audit_trail,
     );
-    self.verify_audit(
+    tree.verify_audit(
         hex_str_to_bytes("a901f842b0016f1e350d20b751851a7179e26dfbb74b213c7a92d37f3c4fbb6c").unwrap(),
         hex_str_to_bytes("4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5").unwrap(),
         &audit_trail,
