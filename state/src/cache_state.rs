@@ -4,7 +4,6 @@ use crate::TrieReader;
 
 use log::*;
 use parking_lot::RwLock;
-use protos::common::{Validator, ValidatorSet};
 
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -12,16 +11,12 @@ use std::{hash::Hash, sync::Arc};
 use storage_db::STORAGE_INSTANCE_REF;
 use utils::general::TRIE_KEY_MAX_LEN;
 
-const VALIDATORS_KEY: &str = "validators";
-// const FEES_KEY: &str = "configFees";
-
 #[derive(Clone, Copy, PartialEq)]
 pub enum StateMapActionType {
-    ADD = 0,
-    MODIFY = 1,
+    HOTLOAD = 0,
+    UPSERT = 1,
     DELETE = 2,
-    READ = 3,
-    MAX = 4,
+    MAX = 3,
 }
 
 pub enum StateMapQueryResult<V> {
@@ -171,7 +166,6 @@ where
 
 pub struct InnerCacheState {
     pub accounts: CacheMap<String, AccountFrame>,
-    pub settings: CacheMap<String, serde_json::Value>,
     pub root_hash: TrieHash,
 }
 
@@ -189,23 +183,16 @@ impl Default for CacheState {
     fn default() -> Self {
         CacheState(Arc::new(InnerCacheState {
             accounts: CacheMap::default(),
-            settings: CacheMap::default(),
             root_hash: Default::default(),
         }))
     }
 }
 
 impl CacheState {
-    pub fn new(root_hash: &TrieHash, validators: &ValidatorSet) -> CacheState {
-        let settings: CacheMap<String, serde_json::Value> = CacheMap::default();
-
-        let value = utils::proto2json::proto_to_json(validators);
-        settings.set(&VALIDATORS_KEY.to_string(), StateMapActionType::READ, value);
-
+    pub fn new(root_hash: TrieHash) -> CacheState {
         CacheState(Arc::new(InnerCacheState {
             accounts: CacheMap::default(),
-            settings: settings,
-            root_hash: root_hash.clone(),
+            root_hash: root_hash,
         }))
     }
 
@@ -215,7 +202,7 @@ impl CacheState {
                 return Ok(None);
             }
             StateMapQueryResult::NeedLoadFormDb => {
-                let root_hash = self.get_root();
+                let root_hash = self.root_hash();
 
                 match Self::get_account_from_db(k, &root_hash) {
                     Ok(value) => {
@@ -238,109 +225,28 @@ impl CacheState {
         }
     }
 
-    pub fn get_validators(&self) -> linked_hash_map::LinkedHashMap<String, u64> {
-        let mut vs: linked_hash_map::LinkedHashMap<String, u64> =
-            linked_hash_map::LinkedHashMap::default();
-        match self.get_from_settings(&VALIDATORS_KEY.to_string()) {
-            StateMapQueryResult::Exist(validator_set_json) => {
-                if let Some(validators) = validator_set_json["validators"].as_array() {
-                    for i in validators.iter() {
-                        let address = i["address"].as_str().unwrap().to_string();
-                        let mut role = 0;
-                        if !i["pledge_amount"].is_null() {
-                            role = i["pledge_amount"].as_u64().unwrap();
-                        }
-                        vs.insert(address, role);
-                    }
-                }
-            }
-            _ => {}
-        }
-        vs
-    }
-
-    pub fn update_new_validators(&self, validators: &Vec<String>) {
-        let mut set = ValidatorSet::new();
-        for address in validators.iter() {
-            let mut v = Validator::new();
-            v.set_address(address.clone());
-            set.mut_validators().push(v);
-        }
-        let value = utils::proto2json::proto_to_json(&set);
-        self.set_to_settings(&VALIDATORS_KEY.to_string(), value);
-    }
-
-    pub fn get_voted_validators(&self, set: &mut ValidatorSet) -> bool {
-        let arr_old = set
-            .get_validators()
-            .iter()
-            .map(|x| x.get_address().to_string())
-            .collect::<Vec<_>>();
-
-        let mut arr_new: Vec<String> = Vec::new();
-        let mut vs = ValidatorSet::new();
-        match self.get_from_settings(&VALIDATORS_KEY.to_string()) {
-            StateMapQueryResult::Exist(validator_set_json) => {
-                if let Some(validators) = validator_set_json["validators"].as_array() {
-                    for i in validators.iter() {
-                        let address = i["address"].as_str().unwrap().to_string();
-                        arr_new.push(address.clone());
-
-                        let mut va = Validator::new();
-                        va.set_address(address);
-                        va.set_pledge_amount(0);
-
-                        vs.mut_validators().push(va);
-                    }
-                }
-            }
-            _ => {}
-        }
-        if arr_old != arr_new {
-            set.clone_from(&vs);
-            return true;
-        }
-        false
-    }
-
     fn get_from_account_cache(&self, k: &String) -> StateMapQueryResult<AccountFrame> {
         self.0.accounts.get(k)
     }
 
-    pub fn get_from_settings(&self, k: &String) -> StateMapQueryResult<serde_json::Value> {
-        self.0.settings.get(k)
-    }
-
-    pub fn set_to_settings(&self, k: &String, v: serde_json::Value) {
-        self.0.settings.set(k, StateMapActionType::MODIFY, v);
-    }
-
-    pub fn get_root(&self) -> TrieHash {
+    pub fn root_hash(&self) -> TrieHash {
         self.0.root_hash.clone()
     }
 
     fn load(&self, k: &String, v: AccountFrame) -> bool {
-        self.0.accounts.set(k, StateMapActionType::READ, v);
+        self.0.accounts.set(k, StateMapActionType::HOTLOAD, v);
         true
     }
 
-    pub fn add(&self, k: &String, v: AccountFrame) -> bool {
+    pub fn upsert(&self, k: &String, v: AccountFrame) -> bool {
         if k.len() >= TRIE_KEY_MAX_LEN {
             return false;
         }
-        self.0.accounts.set(k, StateMapActionType::ADD, v);
+        self.0.accounts.set(k, StateMapActionType::UPSERT, v);
         true
     }
 
-    pub fn modify(&self, k: &String, v: AccountFrame) -> bool {
-        if k.len() >= TRIE_KEY_MAX_LEN {
-            return false;
-        }
-        self.0.accounts.set(k, StateMapActionType::MODIFY, v);
-        true
-    }
-
-    pub fn del(&self, k: &String) -> bool {
+    pub fn delete(&self, k: &String) -> bool {
         if k.len() >= TRIE_KEY_MAX_LEN {
             return false;
         }
@@ -351,49 +257,30 @@ impl CacheState {
         self.0.accounts.commit_to_store();
     }
 
-    pub fn commit_settings(&self) {
-        self.0.settings.commit_to_store();
-    }
-
     pub fn commit(&self) {
         self.commit_accounts();
-        self.commit_settings();
     }
 
     pub fn clear_account_buff(&self) {
         self.0.accounts.clear_buff();
     }
 
-    pub fn clear_settings_buff(&self) {
-        self.0.settings.clear_buff();
-    }
-
     pub fn clear_cache(&self) {
         self.clear_account_buff();
-        self.clear_settings_buff();
     }
 
     pub fn get_store(&self) -> Arc<RwLock<HashMap<String, MapValue<AccountFrame>>>> {
         self.0.accounts.get_store()
     }
 
-    pub fn get_settings_store(&self) -> Arc<RwLock<HashMap<String, MapValue<serde_json::Value>>>> {
-        self.0.settings.get_store()
-    }
-
     pub fn get_buff(&self) -> Arc<RwLock<HashMap<String, MapValue<AccountFrame>>>> {
         self.0.accounts.get_buff()
-    }
-
-    pub fn get_settings_buff(&self) -> Arc<RwLock<HashMap<String, MapValue<serde_json::Value>>>> {
-        self.0.settings.get_buff()
     }
 
     pub fn new_stack_state(&self, double_copy: bool) -> CacheState {
         let state = CacheState(Arc::new(InnerCacheState {
             accounts: CacheMap::new(self.get_buff(), double_copy),
-            settings: CacheMap::new(self.get_settings_buff(), double_copy),
-            root_hash: self.get_root(),
+            root_hash: self.root_hash(),
         }));
         state
     }
@@ -418,11 +305,7 @@ impl CacheState {
                 }
             }
             Err(e) => {
-                return Err(anyhow::anyhow!(
-                    "get account({}) failed ,reason({})",
-                    key,
-                    e
-                ));
+                return Err(e);
             }
         }
     }

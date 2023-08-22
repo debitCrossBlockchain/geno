@@ -7,18 +7,19 @@ message LedgerHeader
   uint64 height = 1;
   bytes  hash = 2;
   bytes  previous_hash = 3;
-  bytes  state_tree_hash = 4;
-  uint64 timestamp = 5;
-  bytes  consensus_value_hash = 6;
-  uint64 version = 7;
-  uint64 tx_count = 8;
-  uint64 total_tx_count = 9;
-  bytes  validators_hash = 10;
-  bytes  fees_hash = 11;
-  string hub_id = 12;
-  string chain_id = 13;
-  string proposer = 14;
-  ExtendedData extended_data = 15;
+  bytes  state_hash = 4;
+  bytes  transaction_hash = 5;
+  bytes  receip_hash = 6;
+  uint64 timestamp = 7;
+  uint64 version = 8;
+  uint64 tx_count = 9;
+  uint64 total_tx_count = 10;
+  bytes  validators_hash = 11;
+  bytes  fees_hash = 12;
+  string hub_id = 13;
+  string chain_id = 14;
+  string proposer = 15;
+  ExtendedData extended_data = 16;
 }
 
 message Ledger{
@@ -37,8 +38,9 @@ enum TransactionType{
   WASM = 2;
 }
 
+
 message Transaction {
-  TransactionType tx_type =1;
+  TransactionType tx_type = 1;
   string  source = 2;
   uint64  nonce = 3;
   string  to = 4;
@@ -50,6 +52,7 @@ message Transaction {
   string  chain_id = 10;
   ExtendedData reserves = 11;
 }
+
 
 
 message TransactionSign {
@@ -71,7 +74,6 @@ message TransactionSignBrodcast{
 message TransactionSignStore {
 	TransactionSign transaction_sign = 1;
   TransactionResult transaction_result = 2;
-	int64 ledger_height = 3;
 }
 
 message TransactionSignSet{
@@ -127,7 +129,7 @@ message Contract{
 message Account{
 	string  address = 1;
 	uint64  nonce = 2;
-  uint64  balance = 3;
+  string  balance = 3;
 	bytes   metadata_hash = 4;	
 	Contract  contract = 5;	
 	string  document = 6;

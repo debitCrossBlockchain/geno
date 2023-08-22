@@ -17,7 +17,7 @@ impl StateStorage {
             Ok(result) => {
                 if let Some(value) = result {
                     match ProtocolParser::deserialize::<Account>(&value) {
-                        Ok(account) => return Ok(Some(AccountFrame::from_account_raw(account))),
+                        Ok(account) => return Ok(Some(AccountFrame::try_from(account)?)),
                         Err(e) => return Err(e),
                     }
                 } else {

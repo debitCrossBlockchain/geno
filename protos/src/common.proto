@@ -155,29 +155,26 @@ message HelloResponseMessage {
 
 
 message TransactionResult {
-  ErrCode code = 1;
+  uint32 err_code = 1;
   string message = 2;
   ContractResult contract_result = 3;
+  uint64 gas_used = 4;
+  uint64 block_height = 5;
+  bytes  block_hash = 6;
+  uint32 index = 7;
 }
 
 message ContractResult {
-  // user contract defined return code, 0-ok, >0 user define error code
-  uint32 code = 1;
-  // user contract defined result
+  uint32 err_code = 1;
   bytes result = 2;
-  // user contract defined result message
   string message = 3;
-  // gas used by current contract(include contract call)
-  uint64 gas_used = 4;
-  // contract events
-  repeated ContractEvent contract_event = 5;
+  repeated ContractEvent contract_event = 4;
 }
 
 // contract event saved in block chain
 message ContractEvent {
-  string topic = 1;
-  string tx_id = 2;
-  string contract_name = 3;
-  string contract_version = 4;
-  repeated string event_data = 5;
+  // contract that emitted this log
+  string  address = 1;
+  repeated string topic = 2;
+  repeated string data = 3;
 }

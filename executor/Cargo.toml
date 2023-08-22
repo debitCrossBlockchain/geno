@@ -1,5 +1,5 @@
 [package]
-name = "network"
+name = "executor"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,16 +8,16 @@ edition = "2021"
 crate-type = ["lib"]
 
 [dependencies]
-message-io = "0.14.6"
+utils = { path = "../utils", version = "0.1.0" }
+state = { path = "../state", version = "0.1.0" }
+vm = { path = "../vm", version = "0.1.0" }
+types = { path = "../types", version = "0.1.0" }
 tracing = { version = "0.1", default-features = false }
 parking_lot = "0.11"
-crossbeam-channel = "0.5"
 anyhow = "1.0.52"
 protos = { path = "../protos", version = "0.1.0" }
 configure = { path = "../configure", version = "0.1.0" }
-storage-db = { path = "../storage/storage-db", version = "0.1.0" }
 protobuf = { version = "2.27.1", features = ["with-bytes"] }
-chrono = "0.4.19"
 
 tokio = { version = "1.17.0", features = [
     "io-util",
@@ -30,9 +30,5 @@ tokio = { version = "1.17.0", features = [
     "rt-multi-thread",
 ] }
 tokio-util = { version = "0.7", features = ["codec"] }
-once_cell = { version = "1", features = ["parking_lot"] }
-async-trait = "0.1"
-exitcode = "1.1.2"
-local-ip-address = "0.4.4"
-uuid = { version = "0.8.2", features = ["serde", "v4"] }
-fxhash = "0.2"
+hex-literal = "0.3"
+hex = "0.4"

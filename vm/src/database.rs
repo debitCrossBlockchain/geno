@@ -1,16 +1,14 @@
+use crate::utils::{AddressConverter, StorageConverter};
 use bytes::Bytes;
 use ledger_store::LedgerStorage;
-use protobuf::Message;
 use revm::{
     db::{CacheDB, DatabaseRef},
-    primitives::{keccak256, AccountInfo, Bytecode, B160, B256, KECCAK_EMPTY, U256},
+    primitives::{AccountInfo, Bytecode, B160, B256, U256},
 };
-use state::{cache_state, AccountFrame, CacheState};
+use state::{AccountFrame, CacheState};
 use state_store::StateStorage;
 use std::convert::TryInto;
-use std::str::FromStr;
-use utils::general::{address_add_prefix, address_filter_prefix};
-pub const ADDRESS_PREFIX: &str = "did:gdt:0x";
+use types::error::VmError;
 
 pub type VmState = CacheDB<State>;
 
@@ -24,10 +22,11 @@ impl State {
         State { cache_state }
     }
 
-    fn get_account(
-        &self,
-        address: &String,
-    ) -> std::result::Result<Option<AccountFrame>, StateError> {
+    pub fn state(&self) -> CacheState {
+        self.cache_state.clone()
+    }
+
+    fn get_account(&self, address: &String) -> std::result::Result<Option<AccountFrame>, VmError> {
         match self.cache_state.get(&address) {
             Ok(value) => {
                 if let Some(account) = value {
@@ -37,23 +36,19 @@ impl State {
                 }
             }
             Err(e) => {
-                return Err(StateError::CacheState(e.to_string()));
+                return Err(VmError::StateError {
+                    error: e.to_string(),
+                });
             }
         }
     }
 }
 
-pub enum StateError {
-    CacheState(String),
-    Database(String),
-    Convert(String),
-}
-
 impl DatabaseRef for State {
-    type Error = StateError;
+    type Error = VmError;
 
     fn basic(&self, address: B160) -> std::result::Result<Option<AccountInfo>, Self::Error> {
-        let key = address_add_prefix(ADDRESS_PREFIX, &address.to_string());
+        let key = AddressConverter::from_evm_address(address);
         let result = self.get_account(&key)?;
         if let Some(account) = result {
             let contract = account.get_contract();
@@ -84,10 +79,16 @@ impl DatabaseRef for State {
                 if let Some(value) = result {
                     value
                 } else {
-                    return Err(StateError::Database("code hash not exist".to_string()));
+                    return Err(VmError::DatabaseError {
+                        error: "code hash not exist for code_by_hash".to_string(),
+                    });
                 }
             }
-            Err(e) => return Err(StateError::Database(e.to_string())),
+            Err(e) => {
+                return Err(VmError::DatabaseError {
+                    error: format!("code_by_hash {}", e.to_string()),
+                })
+            }
         };
 
         // get account from cache state
@@ -108,44 +109,41 @@ impl DatabaseRef for State {
     }
 
     fn storage(&self, address: B160, index: U256) -> std::result::Result<U256, Self::Error> {
-        let key = address_add_prefix(ADDRESS_PREFIX, &address.to_string());
+        let key = AddressConverter::from_evm_address(address);
 
         let value = U256::default();
 
-        match self.cache_state.get(&key) {
-            Ok(value) => {
-                if let Some(mut account) = value {
-                    match account.get_contract_metadata(index.as_le_slice()) {
-                        Ok(value) => match value {
-                            Some(value) => {
-                                if let Some(u_value) = U256::try_from_le_slice(&value) {
-                                    return Ok(u_value);
-                                } else {
-                                    return Err(StateError::Convert(
-                                        "value to u256 error".to_string(),
-                                    ));
-                                }
-                            }
-                            None => return Ok(U256::default()),
-                        },
-                        Err(e) => {
-                            return Err(StateError::CacheState(e.to_string()));
-                        }
+        let result = self.get_account(&key)?;
+
+        if let Some(mut account) = result {
+            match account.get_contract_metadata(&StorageConverter::from_evm_storage(index)) {
+                Ok(value) => match value {
+                    Some(value) => {
+                        return StorageConverter::to_evm_storage(&value);
                     }
-                } else {
-                    return Err(StateError::CacheState("account not found".to_string()));
+                    None => return Ok(U256::default()),
+                },
+                Err(e) => {
+                    return Err(VmError::StorageError {
+                        error: e.to_string(),
+                    });
                 }
             }
-            Err(e) => {
-                return Err(StateError::CacheState(e.to_string()));
-            }
+        } else {
+            return Err(VmError::StateError {
+                error: "account not found for storage".to_string(),
+            });
         }
     }
 
     fn block_hash(&self, number: U256) -> std::result::Result<B256, Self::Error> {
         let seq = match number.try_into() {
             Ok(value) => value,
-            Err(e) => return Err(StateError::Convert("u256 to u64 error".to_string())),
+            Err(e) => {
+                return Err(VmError::ValueConvertError {
+                    error: format!("u256 to u64 error"),
+                })
+            }
         };
 
         match LedgerStorage::load_ledger_header(seq) {
@@ -156,7 +154,11 @@ impl DatabaseRef for State {
                     return Ok(B256::default());
                 }
             }
-            Err(e) => return Err(StateError::Database(e.to_string())),
+            Err(e) => {
+                return Err(VmError::StorageError {
+                    error: format!("block_hash {}", e.to_string()),
+                })
+            }
         }
     }
 }
