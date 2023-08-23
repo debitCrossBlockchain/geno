@@ -82,7 +82,7 @@ impl AccountFrame {
         self.account.set_contract(contract.clone());
     }
 
-    pub fn get_contract(&self) -> Contract {
+    pub fn contract(&self) -> Contract {
         self.account.get_contract().clone()
     }
 
@@ -101,15 +101,15 @@ impl AccountFrame {
         self.account.set_document(document);
     }
 
-    pub fn get_document(&self) -> &str {
+    pub fn document(&self) -> &str {
         self.account.get_document()
     }
 
-    pub fn get_address(&self) -> String {
+    pub fn address(&self) -> String {
         self.account.get_address().clone().to_string()
     }
 
-    pub fn get_account(&self) -> Account {
+    pub fn account(&self) -> Account {
         self.account.clone()
     }
 

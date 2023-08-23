@@ -8,6 +8,12 @@ pub enum BlockExecutionError {
 
     #[error("TransactionParamError error: {:?}", error)]
     TransactionParamError { error: String },
+
+    #[error("VmError error: {:?}", error)]
+    VmEexecError { error: String },
+
+    #[error("StateConvertError error: {:?}", error)]
+    StateConvertError { error: String },
 }
 
 #[allow(missing_docs)]

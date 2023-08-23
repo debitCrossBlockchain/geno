@@ -7,8 +7,8 @@ use revm::{
     db::{AccountState, CacheDB, DatabaseRef},
     primitives::{
         hash_map::{self, Entry},
-        Account as RevmAccount, AccountInfo, ResultAndState, TransactTo, TxEnv, B160, KECCAK_EMPTY,
-        U256,
+        Account as RevmAccount, AccountInfo, ExecutionResult, Output, ResultAndState, TransactTo,
+        TxEnv, B160, KECCAK_EMPTY, U256,
     },
     EVM,
 };
@@ -31,11 +31,13 @@ impl EvmExecutor {
 
     pub fn execute(
         &mut self,
+        index: usize,
         header: &LedgerHeader,
         transaction: &TransactionSignRaw,
         post_state: &mut PostState,
     ) -> std::result::Result<(), VmError> {
-        Self::fill_tx(&mut self.evm.env.tx, &transaction)?;
+        self.fill_tx_env(&transaction)?;
+        self.fill_block_env(header)?;
 
         // main execution.
         let out = self.evm.transact();
@@ -44,20 +46,32 @@ impl EvmExecutor {
             Err(e) => {
                 return Err(VmError::VMExecuteError {
                     hash: transaction.tx.hash_hex(),
-                    message: format!("{e:?}"),
+                    message: format!("{:?}", e),
                 });
             }
         };
 
         let ResultAndState { result, state } = ret_and_state;
+        let (output, contract_address) = match result.clone() {
+            ExecutionResult::Success { output, .. } => match output {
+                Output::Call(value) => (Some(value.into()), None),
+                Output::Create(value, address) => (Some(value.into()), address),
+            },
+            _ => (None, None),
+        };
+
         self.commit_changes(header.get_height(), state, true, post_state);
 
         post_state.add_receipt(
             header.get_height(),
             Receipt {
+                index: index,
                 // Success flag was added in `EIP-658: Embedding transaction status code in
                 // receipts`.
                 success: result.is_success(),
+                gas_used: result.gas_used(),
+                contract_address: contract_address,
+                output: output,
                 // convert to reth log
                 logs: result.into_logs().into_iter().collect(),
             },
@@ -223,22 +237,19 @@ impl EvmExecutor {
         }
     }
 
-    fn fill_tx(
-        tx_env: &mut TxEnv,
-        tx_raw: &TransactionSignRaw,
-    ) -> std::result::Result<(), VmError> {
-        tx_env.gas_limit = tx_raw.tx.gas_limit();
-        tx_env.gas_price = U256::from(tx_raw.tx.gas_price());
-        tx_env.gas_priority_fee = None;
+    fn fill_tx_env(&mut self, tx_raw: &TransactionSignRaw) -> std::result::Result<(), VmError> {
+        self.evm.env.tx.gas_limit = tx_raw.tx.gas_limit();
+        self.evm.env.tx.gas_price = U256::from(tx_raw.tx.gas_price());
+        self.evm.env.tx.gas_priority_fee = None;
         if tx_raw.tx.to().is_empty() {
-            tx_env.transact_to = TransactTo::create();
+            self.evm.env.tx.transact_to = TransactTo::create();
         } else {
             let to = AddressConverter::to_evm_address(tx_raw.tx.to())?;
-            tx_env.transact_to = TransactTo::Call(to);
+            self.evm.env.tx.transact_to = TransactTo::Call(to);
         }
 
-        tx_env.value = U256::from(tx_raw.tx.value());
-        tx_env.data = Bytes::from(tx_raw.tx.input().to_vec());
+        self.evm.env.tx.value = U256::from(tx_raw.tx.value());
+        self.evm.env.tx.data = Bytes::from(tx_raw.tx.input().to_vec());
 
         let chain_id = match u64::from_str_radix(tx_raw.tx.chain_id(), 10) {
             Ok(value) => value,
@@ -252,10 +263,22 @@ impl EvmExecutor {
                 });
             }
         };
-        tx_env.chain_id = Some(chain_id);
-        tx_env.nonce = Some(tx_raw.tx.nonce());
-        tx_env.access_list.clear();
+        self.evm.env.tx.chain_id = Some(chain_id);
+        self.evm.env.tx.nonce = Some(tx_raw.tx.nonce());
+        self.evm.env.tx.access_list.clear();
 
+        Ok(())
+    }
+
+    fn fill_block_env(&mut self, header: &LedgerHeader) -> std::result::Result<(), VmError> {
+        self.evm.env.block.number = U256::from(header.get_height());
+        self.evm.env.block.coinbase = AddressConverter::to_evm_address(header.get_proposer())?;
+        self.evm.env.block.timestamp = U256::from(header.get_timestamp());
+
+        self.evm.env.block.prevrandao = None;
+        self.evm.env.block.difficulty = U256::ZERO;
+        self.evm.env.block.basefee = U256::ZERO;
+        self.evm.env.block.gas_limit = U256::MAX;
         Ok(())
     }
 

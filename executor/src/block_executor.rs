@@ -1,3 +1,5 @@
+use std::result;
+
 use crate::block_result::BlockResult;
 use protos::ledger::*;
 use state::{CacheState, TrieHash};
@@ -11,7 +13,6 @@ impl BlockExecutor {
         &self,
         block: Ledger,
     ) -> std::result::Result<BlockResult, BlockExecutionError> {
-        let mut result = BlockResult::default();
         let header = block.get_header();
 
         // initialize state by last block state root
@@ -23,7 +24,7 @@ impl BlockExecutor {
         let mut post_state = PostState::new();
 
         // execute block
-        for tx in block.get_transaction_signs() {
+        for (index, tx) in block.get_transaction_signs().iter().enumerate() {
             let tx_raw = match TransactionSignRaw::try_from(tx.clone()) {
                 Ok(tx_raw) => tx_raw,
                 Err(e) => {
@@ -32,9 +33,24 @@ impl BlockExecutor {
                     })
                 }
             };
-            let _ = vm.execute(block.get_header(), &tx_raw, &mut post_state);
+            if let Err(e) = vm.execute(index, block.get_header(), &tx_raw, &mut post_state) {
+                return Err(BlockExecutionError::VmEexecError {
+                    error: format!("{e:?}"),
+                });
+            }
         }
-        let r = post_state.commit_to_geno_state(header.get_height(), state);
+        if let Err(e) = post_state.convert_to_geno_state(header.get_height(), state.clone()) {
+            return Err(BlockExecutionError::StateConvertError {
+                error: format!("{e:?}"),
+            });
+        }
+        state.commit();
+        let tx_result_set = post_state.convert_to_geno_txresult(header.get_height());
+
+        let result = BlockResult {
+            state,
+            tx_result_set,
+        };
 
         Ok(result)
     }

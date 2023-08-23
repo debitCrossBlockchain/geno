@@ -51,8 +51,8 @@ impl DatabaseRef for State {
         let key = AddressConverter::from_evm_address(address);
         let result = self.get_account(&key)?;
         if let Some(account) = result {
-            let contract = account.get_contract();
-            let b = if account.has_contract() && account.get_contract().get_code().len() > 0 {
+            let contract = account.contract();
+            let b = if account.has_contract() && account.contract().get_code().len() > 0 {
                 Bytes::from(contract.get_code().to_vec())
             } else {
                 Bytes::default()
@@ -94,8 +94,8 @@ impl DatabaseRef for State {
         // get account from cache state
         let result = self.get_account(&address)?;
         if let Some(account) = result {
-            let contract = account.get_contract();
-            let b = if account.has_contract() && account.get_contract().get_code().len() > 0 {
+            let contract = account.contract();
+            let b = if account.has_contract() && contract.get_code().len() > 0 {
                 Bytes::from(contract.get_code().to_vec())
             } else {
                 Bytes::default()

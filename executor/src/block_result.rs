@@ -1,7 +1,6 @@
-pub struct BlockResult {}
-
-impl Default for BlockResult {
-    fn default() -> Self {
-        Self {}
-    }
+use protos::common::TransactionResult;
+use state::CacheState;
+pub struct BlockResult {
+    pub state: CacheState,
+    pub tx_result_set: Vec<TransactionResult>,
 }

@@ -1,5 +1,7 @@
+use protos::common::{ContractEvent, ContractResult, TransactionResult};
 use revm::primitives::{
     hash_map::{self, Entry},
+    hex::ToHex,
     AccountInfo, Address, Bytecode, ExecutionResult, Log, ResultAndState, TransactTo, TxEnv, B160,
     B256, U256,
 };
@@ -16,8 +18,49 @@ use crate::utils::{u256_2_u128, AddressConverter, StorageConverter};
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Receipt {
+    pub index: usize,
     pub success: bool,
     pub logs: Vec<Log>,
+    pub gas_used: u64,
+    pub contract_address: Option<B160>,
+    pub output: Option<bytes::Bytes>,
+}
+
+impl Receipt {
+    // lack error code,message,block_hash,block_height to set
+    pub fn convert_to_geno_txresult(&self) -> TransactionResult {
+        let mut tx_result = TransactionResult::default();
+        let mut contract_result = ContractResult::default();
+
+        let mut events = Vec::new();
+        for log in self.logs.iter() {
+            let mut contract_event = ContractEvent::default();
+            contract_event.set_address(AddressConverter::from_evm_address(log.address));
+            let topics = log
+                .topics
+                .iter()
+                .map(|topic| topic.to_string())
+                .collect::<Vec<_>>();
+            contract_event.set_topic(topics.into());
+            contract_event.set_data(vec![hex::encode(log.data.as_ref())].into());
+            events.push(contract_event);
+        }
+
+        contract_result.set_contract_event(events.into());
+        contract_result.set_err_code(if self.success == true { 0 } else { 1 });
+        if let Some(address) = self.contract_address {
+            contract_result.set_message(AddressConverter::from_evm_address(address));
+        }
+        if let Some(out) = &self.output {
+            contract_result.set_result(out.to_vec());
+        }
+
+        tx_result.set_contract_result(contract_result);
+        tx_result.set_gas_used(self.gas_used);
+        tx_result.set_index(self.index as u32);
+
+        tx_result
+    }
 }
 
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
@@ -138,15 +181,15 @@ impl PostState {
         self.receipts.entry(block).or_default().push(receipt);
     }
 
-    pub fn commit_to_geno_state(
-        mut self,
+    pub fn convert_to_geno_state(
+        &mut self,
         block_number: u64,
         state: CacheState,
     ) -> std::result::Result<(), VmError> {
         // process storages
         tracing::trace!(target: "post_state", "Process storages in block {}", block_number);
-        for (address, storage) in self.storage.into_iter() {
-            let geno_address = AddressConverter::from_evm_address(address);
+        for (address, storage) in self.storage.iter() {
+            let geno_address = AddressConverter::from_evm_address(address.clone());
             let mut geno_account = match Self::get_geno_account(&state, &geno_address)? {
                 Some(geno_account) => geno_account,
                 None => {
@@ -163,13 +206,13 @@ impl PostState {
                 }
             }
 
-            for (key, value) in storage.storage {
-                tracing::trace!(target: "post_state", "Updating state storage {} {:?} in block {}", geno_address,StorageConverter::from_evm_storage(key),block_number);
+            for (key, value) in storage.storage.iter() {
+                tracing::trace!(target: "post_state", "Updating state storage {} {:?} in block {}", geno_address,StorageConverter::from_evm_storage(key.clone()),block_number);
 
-                if value != U256::ZERO {
+                if *value != U256::ZERO {
                     if !geno_account.upsert_contract_metadata(
-                        &StorageConverter::from_evm_storage(key),
-                        &StorageConverter::from_evm_storage(value),
+                        &StorageConverter::from_evm_storage(key.clone()),
+                        &StorageConverter::from_evm_storage(value.clone()),
                     ) {
                         tracing::error!("post_state Process storages failed,update storage error");
                         panic!("post_state Process storages failed,update storage error");
@@ -181,8 +224,8 @@ impl PostState {
 
         // process accounts
         tracing::trace!(target: "post_state", "Process accounts in block {}", block_number);
-        for (address, account) in self.accounts.into_iter() {
-            let geno_address = AddressConverter::from_evm_address(address);
+        for (address, account) in self.accounts.iter() {
+            let geno_address = AddressConverter::from_evm_address(address.clone());
 
             if let Some(account) = account {
                 tracing::trace!(target: "post_state", "Updating state account {}",geno_address);
@@ -207,12 +250,12 @@ impl PostState {
 
         // process contracts code
         tracing::trace!(target: "post_state", "Process contracts code in block {}", block_number);
-        for (hash, (address, bytecode)) in self.bytecode.into_iter() {
+        for (hash, (address, bytecode)) in self.bytecode.iter() {
             tracing::trace!(target: "post_state", "Process contract code hash {} in block {}",hash, block_number);
-            let geno_address = AddressConverter::from_evm_address(address);
+            let geno_address = AddressConverter::from_evm_address(address.clone());
             match Self::get_geno_account(&state, &geno_address)? {
                 Some(mut geno_account) => {
-                    let mut contract = geno_account.get_contract();
+                    let mut contract = geno_account.contract();
                     contract.set_code(bytecode.bytecode.to_vec());
                     geno_account.set_contract(&contract);
                     state.upsert(&geno_address, geno_account);
@@ -225,6 +268,19 @@ impl PostState {
         }
 
         Ok(())
+    }
+
+    pub fn convert_to_geno_txresult(&self, block_number: u64) -> Vec<TransactionResult> {
+        let mut results = Vec::new();
+        if let Some(receipts) = self.receipts.get(&block_number) {
+            for receipt in receipts {
+                let mut result = receipt.convert_to_geno_txresult();
+                result.set_block_height(block_number);
+
+                results.push(result);
+            }
+        }
+        results
     }
 
     fn get_geno_account(
