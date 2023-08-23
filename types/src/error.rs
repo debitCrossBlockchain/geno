@@ -10,7 +10,7 @@ pub enum BlockExecutionError {
     TransactionParamError { error: String },
 
     #[error("VmError error: {:?}", error)]
-    VmEexecError { error: String },
+    VmError { error: String },
 
     #[error("StateConvertError error: {:?}", error)]
     StateConvertError { error: String },

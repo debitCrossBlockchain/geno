@@ -7,8 +7,8 @@ use revm::{
     db::{AccountState, CacheDB, DatabaseRef},
     primitives::{
         hash_map::{self, Entry},
-        Account as RevmAccount, AccountInfo, ExecutionResult, Output, ResultAndState, TransactTo,
-        TxEnv, B160, KECCAK_EMPTY, U256,
+        Account as RevmAccount, AccountInfo, BlockEnv, ExecutionResult, Output, ResultAndState,
+        TransactTo, TxEnv, B160, KECCAK_EMPTY, U256,
     },
     EVM,
 };
@@ -18,26 +18,32 @@ use types::{error::VmError, transaction::TransactionSignRaw};
 
 pub struct EvmExecutor {
     evm: EVM<VmState>,
+    header: LedgerHeader,
 }
 
 impl EvmExecutor {
-    pub fn new(cache_state: CacheState) -> EvmExecutor {
+    pub fn new(
+        header: &LedgerHeader,
+        cache_state: CacheState,
+    ) -> std::result::Result<EvmExecutor, VmError> {
         let vm_state = VmState::new(State::new(cache_state));
         let mut evm = EVM::new();
         evm.database(vm_state);
 
-        EvmExecutor { evm }
+        Self::fill_block_env(&mut evm.env.block, header)?;
+        Ok(EvmExecutor {
+            evm,
+            header: header.clone(),
+        })
     }
 
     pub fn execute(
         &mut self,
         index: usize,
-        header: &LedgerHeader,
         transaction: &TransactionSignRaw,
         post_state: &mut PostState,
     ) -> std::result::Result<(), VmError> {
-        self.fill_tx_env(&transaction)?;
-        self.fill_block_env(header)?;
+        Self::fill_tx_env(&mut self.evm.env.tx, &transaction)?;
 
         // main execution.
         let out = self.evm.transact();
@@ -60,10 +66,10 @@ impl EvmExecutor {
             _ => (None, None),
         };
 
-        self.commit_changes(header.get_height(), state, true, post_state);
+        self.commit_changes(self.header.get_height(), state, true, post_state);
 
         post_state.add_receipt(
-            header.get_height(),
+            self.header.get_height(),
             Receipt {
                 index: index,
                 // Success flag was added in `EIP-658: Embedding transaction status code in
@@ -237,19 +243,22 @@ impl EvmExecutor {
         }
     }
 
-    fn fill_tx_env(&mut self, tx_raw: &TransactionSignRaw) -> std::result::Result<(), VmError> {
-        self.evm.env.tx.gas_limit = tx_raw.tx.gas_limit();
-        self.evm.env.tx.gas_price = U256::from(tx_raw.tx.gas_price());
-        self.evm.env.tx.gas_priority_fee = None;
+    fn fill_tx_env(
+        tx_env: &mut TxEnv,
+        tx_raw: &TransactionSignRaw,
+    ) -> std::result::Result<(), VmError> {
+        tx_env.gas_limit = tx_raw.tx.gas_limit();
+        tx_env.gas_price = U256::from(tx_raw.tx.gas_price());
+        tx_env.gas_priority_fee = None;
         if tx_raw.tx.to().is_empty() {
-            self.evm.env.tx.transact_to = TransactTo::create();
+            tx_env.transact_to = TransactTo::create();
         } else {
             let to = AddressConverter::to_evm_address(tx_raw.tx.to())?;
-            self.evm.env.tx.transact_to = TransactTo::Call(to);
+            tx_env.transact_to = TransactTo::Call(to);
         }
 
-        self.evm.env.tx.value = U256::from(tx_raw.tx.value());
-        self.evm.env.tx.data = Bytes::from(tx_raw.tx.input().to_vec());
+        tx_env.value = U256::from(tx_raw.tx.value());
+        tx_env.data = Bytes::from(tx_raw.tx.input().to_vec());
 
         let chain_id = match u64::from_str_radix(tx_raw.tx.chain_id(), 10) {
             Ok(value) => value,
@@ -263,22 +272,25 @@ impl EvmExecutor {
                 });
             }
         };
-        self.evm.env.tx.chain_id = Some(chain_id);
-        self.evm.env.tx.nonce = Some(tx_raw.tx.nonce());
-        self.evm.env.tx.access_list.clear();
+        tx_env.chain_id = Some(chain_id);
+        tx_env.nonce = Some(tx_raw.tx.nonce());
+        tx_env.access_list.clear();
 
         Ok(())
     }
 
-    fn fill_block_env(&mut self, header: &LedgerHeader) -> std::result::Result<(), VmError> {
-        self.evm.env.block.number = U256::from(header.get_height());
-        self.evm.env.block.coinbase = AddressConverter::to_evm_address(header.get_proposer())?;
-        self.evm.env.block.timestamp = U256::from(header.get_timestamp());
+    fn fill_block_env(
+        block_env: &mut BlockEnv,
+        header: &LedgerHeader,
+    ) -> std::result::Result<(), VmError> {
+        block_env.number = U256::from(header.get_height());
+        block_env.coinbase = AddressConverter::to_evm_address(header.get_proposer())?;
+        block_env.timestamp = U256::from(header.get_timestamp());
 
-        self.evm.env.block.prevrandao = None;
-        self.evm.env.block.difficulty = U256::ZERO;
-        self.evm.env.block.basefee = U256::ZERO;
-        self.evm.env.block.gas_limit = U256::MAX;
+        block_env.prevrandao = None;
+        block_env.difficulty = U256::ZERO;
+        block_env.basefee = U256::ZERO;
+        block_env.gas_limit = U256::MAX;
         Ok(())
     }
 

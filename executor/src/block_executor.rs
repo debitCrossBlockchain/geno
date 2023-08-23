@@ -20,7 +20,15 @@ impl BlockExecutor {
         let state = CacheState::new(root_hash);
 
         // initialize contract vm
-        let mut vm = EvmExecutor::new(state.clone());
+        let mut vm = match EvmExecutor::new(header, state.clone()) {
+            Ok(vm) => vm,
+            Err(e) => {
+                return Err(BlockExecutionError::VmError {
+                    error: format!("vm init error {e:?}"),
+                });
+            }
+        };
+
         let mut post_state = PostState::new();
 
         // execute block
@@ -33,9 +41,9 @@ impl BlockExecutor {
                     })
                 }
             };
-            if let Err(e) = vm.execute(index, block.get_header(), &tx_raw, &mut post_state) {
-                return Err(BlockExecutionError::VmEexecError {
-                    error: format!("{e:?}"),
+            if let Err(e) = vm.execute(index, &tx_raw, &mut post_state) {
+                return Err(BlockExecutionError::VmError {
+                    error: format!("vm execute error {e:?}"),
                 });
             }
         }
