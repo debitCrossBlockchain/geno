@@ -11,3 +11,4 @@ utils = { path = "../../utils", version = "0.1.0" }
 protos = { path = "../../protos", version = "0.1.0" }
 protobuf = { version = "2.27.1", features = ["with-bytes"] }
 anyhow = "1.0.52"
+hex = "0.4"

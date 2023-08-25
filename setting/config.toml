@@ -3,10 +3,9 @@ network_id = 8108773
 chain_id = "abc"
 chain_hub = "bbc"
 ssl_enable = false
-address = "did:gdt:0x160b54be617f4bff07bd6c994fc6dd17a69d5e4e"
+node_address = "did:gdt:0x160b54be617f4bff07bd6c994fc6dd17a69d5e4e"
 node_private_key = "43f47b5387b5321a712c5960074576b114835aa8e1ce1c2e6ab070d7ffb44346"
 key_version = 12356
-
 
 
 [ssl]
@@ -18,13 +17,13 @@ verify_file = "config/ca.crt"
 
 [p2p_network]
 heartbeat_interval = 60
-listen_addr = "0.0.0.0:19331"
+listen_addr = "0.0.0.0:19301"
 target_peer_connection = 50
 max_connection = 2000
 connect_timeout = 5
 local_addr = ""
 known_peers = []
-consensus_listen_addr = "0.0.0.0:19441"
+consensus_listen_addr = "0.0.0.0:19401"
 consensus_known_peers = []
 codec_type = "default"
 
@@ -36,8 +35,6 @@ ledger_db_path = "./data/ledger.db"
 key_value_db_path = "./data/key_value.db"
 
 
-
 [genesis_block]
 genesis_account = "did:gdt:0xf6b02a2d47b84e845b7e3623355f041bcb36daf1" #priv "fc5a55e22797ed20e78b438d9e3ca873877a7b55a604dfa7531c300e743c5ef1"
 validators = ["did:gdt:0x160b54be617f4bff07bd6c994fc6dd17a69d5e4e"]
-

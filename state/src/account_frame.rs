@@ -5,10 +5,12 @@ use protos::{
     common::KeyPair,
     ledger::{Account, Contract},
 };
+use sha3::{Digest, Keccak256};
 use std::collections::HashMap;
 use storage_db::{MemWriteBatch, STORAGE_INSTANCE_REF};
 use utils::{general::*, parse::ProtocolParser};
 
+pub const CONTRACT_META_PREFIX: &str = "contract_meta";
 pub struct DataCache<T>
 where
     T: Clone,
@@ -95,6 +97,10 @@ impl AccountFrame {
             }
         }
         false
+    }
+
+    pub fn contract_code_hash(&self) -> Vec<u8> {
+        Vec::from(Keccak256::digest(self.account.get_contract().get_code()).as_slice())
     }
 
     pub fn set_document(&mut self, document: String) {

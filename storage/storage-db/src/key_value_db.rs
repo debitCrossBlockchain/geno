@@ -16,8 +16,8 @@ pub trait KeyValueDb {
 
 pub trait WriteBatchTrait {
     fn new() -> Self;
-    fn set(&mut self, key: &[u8], value: &[u8]);
-    fn delete(&mut self, key: &[u8]);
+    fn set(&mut self, key: Vec<u8>, value: Vec<u8>);
+    fn delete(&mut self, key: Vec<u8>);
 }
 
 pub struct MemWriteBatch {
@@ -33,13 +33,13 @@ impl WriteBatchTrait for MemWriteBatch {
         }
     }
 
-    fn set(&mut self, key: &[u8], value: &[u8]) {
-        let _ = self.deletions.remove(key);
-        self.insertions.insert(key.to_vec(), value.to_vec());
+    fn set(&mut self, key: Vec<u8>, value: Vec<u8>) {
+        let _ = self.deletions.remove(&key);
+        self.insertions.insert(key, value);
     }
 
-    fn delete(&mut self, key: &[u8]) {
-        let _ = self.insertions.remove(key);
-        self.deletions.insert(key.to_vec());
+    fn delete(&mut self, key: Vec<u8>) {
+        let _ = self.insertions.remove(&key);
+        self.deletions.insert(key);
     }
 }

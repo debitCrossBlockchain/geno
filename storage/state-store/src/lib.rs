@@ -51,7 +51,7 @@ impl StateStorage {
 
     pub fn store_codehash_address_map(code_hash: &[u8], address: &str, batch: &mut MemWriteBatch) {
         let key = compose_prefix_bytes(CODE_HASH_PREFIX, code_hash);
-        batch.set(&key, address.as_bytes());
+        batch.set(key, address.as_bytes().to_vec());
     }
 
     pub fn commit(batch: MemWriteBatch) -> anyhow::Result<()> {

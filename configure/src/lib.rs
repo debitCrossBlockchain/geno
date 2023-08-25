@@ -15,7 +15,6 @@ mod fees;
 mod genesis_block;
 mod json_rpc_config;
 mod ledger;
-mod metric_config;
 mod p2p_network;
 mod ssl;
 mod tx_pool_config;
@@ -29,19 +28,14 @@ pub use fees::Fees;
 pub use genesis_block::GenesisBlock;
 pub use json_rpc_config::JsonRpcConfig;
 pub use ledger::Ledger;
-pub use metric_config::MetricConfig;
 pub use p2p_network::P2PNetwork;
 pub use ssl::SSL;
 pub use tx_pool_config::TxPoolConfig;
 pub use websocket_config::Websocket;
 
-use parking_lot::{Mutex, RwLock};
-use std::io;
-use std::mem::MaybeUninit;
 use std::sync::Arc;
-use std::sync::Once;
 lazy_static! {
-    pub static ref ConfigureInstanceRef: Arc<Configure> = Arc::new({
+    pub static ref CONFIGURE_INSTANCE_REF: Arc<Configure> = Arc::new({
         let mut conf = Config::default();
         conf.merge(File::new("setting/config", FileFormat::Toml))
             .unwrap();

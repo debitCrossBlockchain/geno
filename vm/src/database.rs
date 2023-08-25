@@ -146,7 +146,7 @@ impl DatabaseRef for State {
             }
         };
 
-        match LedgerStorage::load_ledger_header(seq) {
+        match LedgerStorage::load_ledger_header_by_seq(seq) {
             Ok(result) => {
                 if let Some(header) = result {
                     return Ok(B256::from_slice(header.get_hash()));

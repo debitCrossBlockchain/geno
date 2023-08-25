@@ -1,33 +1,10 @@
-use configure::{ConfigureInstanceRef, Consensus, Fees, GenesisBlock, Ledger};
-use protos::{
-    consensus,
-    ledger::{BftValue, TransactionSign, TransactionSignBrodcast},
-};
-
-pub const CONSENSUS_PREFIX: &str = "consensus";
-
-pub const TRANSACTION_PREFIX: &str = "tx";
-pub const LEDGER_TRANSACTION_PREFIX: &str = "lg_tx";
-pub const CONSENSUS_VALUE_PREFIX: &str = "consensus_value";
-pub const ACCOUNT_PREFIX: &str = "acc";
-pub const METADATA_PREFIX: &str = "meta";
-pub static mut CHAIN_ID: &str = "0";
-pub static mut CHAIN_HUB: &str = "0";
-pub const KEY_LEDGER_SEQ_PREFIX: &str = "ledger_max_seq";
-pub const VALIDATORS_PREFIX: &str = "validators";
-pub const KEY_GENE_ACCOUNT_PREFIX: &str = "genesis_account";
-pub const LAST_PROOF: &str = "last_proof";
-pub const PROOF_PREFIX: &str = "proof";
-pub const CONTRACT_STATE_PREFIX: &str = "contract_state";
-pub const CONTRACT_SCHEMA_PREFIX: &str = "contract_schema";
-pub const CONTRACT_META_PREFIX: &str = "contract_meta";
-pub const ACCOUNT_META_PREFIX: &str = "account_meta";
-pub const CDI_INFO_PREFIX: &str = "cdi_info";
-pub const LAST_TX_HASHS: &str = "last_tx_hashs";
-pub const PROPOSAL_KEY: &str = "proposal";
+use configure::{Consensus, Fees, GenesisBlock, Ledger, CONFIGURE_INSTANCE_REF};
 
 pub const LEDGER_VERSION: u64 = 1000;
 pub const NETWORK_VERSION: u64 = 1000;
+
+pub const GENESIS_TIMESTAMP_USECS: u64 = 0;
+pub const GENESIS_HEIGHT: u64 = 0;
 
 pub const HANDLE_BUF_LEN: usize = 16 * 64;
 pub const P2P_LIMIT_SIZE: u32 = 20 * 1024 * 1024;
@@ -52,8 +29,6 @@ pub const BLOCK_EXECUTE_TIME_OUT: i64 = 5 * MICRO_UNITS_PER_SEC;
 pub const TRIE_KEY_MAX_LEN: usize = 63;
 pub const METADATA_KEY_MAXSIZE: usize = TRIE_KEY_MAX_LEN;
 pub const METADATA_MAX_VALUE_SIZE: usize = 256 * BYTES_PER_KILO as usize;
-
-pub static mut LEDGER_INTERVAL: i64 = 10;
 
 pub const NODE_VOLIDATORE: u64 = 0;
 pub const NODE_CANDIDATE_ADD: u64 = 1;
@@ -145,6 +120,10 @@ pub fn hash_crypto_byte(bytes: &[u8]) -> Vec<u8> {
     msp::HashInstanceRef.hash(bytes)
 }
 
+pub fn hash_zero() -> Vec<u8> {
+    msp::hash_zero()
+}
+
 pub fn verify_hash(content: &[u8], hash: &[u8]) -> bool {
     msp::HashInstanceRef.verify_hash(content, hash)
 }
@@ -152,35 +131,35 @@ pub fn verify_hash(content: &[u8], hash: &[u8]) -> bool {
 // ===========================================================================
 
 pub fn self_chain_hub() -> String {
-    ConfigureInstanceRef.chain_hub.clone()
+    CONFIGURE_INSTANCE_REF.chain_hub.clone()
 }
 
 pub fn self_chain_id() -> String {
-    ConfigureInstanceRef.chain_id.clone()
+    CONFIGURE_INSTANCE_REF.chain_id.clone()
 }
 
 pub fn node_private_key() -> String {
-    ConfigureInstanceRef.node_private_key.clone()
+    CONFIGURE_INSTANCE_REF.node_private_key.clone()
 }
 
 pub fn node_address() -> String {
-    ConfigureInstanceRef.address.clone()
+    CONFIGURE_INSTANCE_REF.node_address.clone()
 }
 
 pub fn consensus_config() -> Consensus {
-    ConfigureInstanceRef.consensus.clone()
+    CONFIGURE_INSTANCE_REF.consensus.clone()
 }
 
 pub fn ledger_config() -> Ledger {
-    ConfigureInstanceRef.ledger.clone()
+    CONFIGURE_INSTANCE_REF.ledger.clone()
 }
 
 pub fn genesis_block_config() -> GenesisBlock {
-    ConfigureInstanceRef.genesis_block.clone()
+    CONFIGURE_INSTANCE_REF.genesis_block.clone()
 }
 
 pub fn fees_config() -> Fees {
-    ConfigureInstanceRef.fees.clone()
+    CONFIGURE_INSTANCE_REF.fees.clone()
 }
 
 pub fn address_filter_prefix(address: &str) -> String {
@@ -198,6 +177,16 @@ pub fn address_add_prefix(prefix: &str, address: &str) -> String {
 pub fn address_prefix_filter_0x() -> String {
     let prefix = msp::signing::ADDRESS_PREFIX;
     prefix[0..prefix.len() - 3].to_string()
+}
+
+pub fn u64_2_vector(value: u64) -> Vec<u8> {
+    value.to_be_bytes().to_vec()
+}
+
+pub fn vector_2_u64(data: Vec<u8>) -> u64 {
+    let mut arr = [0u8; 8];
+    arr.copy_from_slice(&data);
+    u64::from_be_bytes(arr)
 }
 
 #[cfg(test)]
