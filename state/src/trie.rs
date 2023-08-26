@@ -63,7 +63,7 @@ impl TrieWriter {
     pub fn commit(
         db: KeyValueDB,
         root_hash: Option<TrieHash>,
-        datas: &mut HashMap<Vec<u8>, Option<Vec<u8>>>,
+        datas: &HashMap<Vec<u8>, Option<Vec<u8>>>,
         batch: &mut MemWriteBatch,
     ) -> anyhow::Result<TrieHash> {
         let mut trie_db = TrieHashDB::new(db, None);
@@ -92,7 +92,7 @@ impl TrieWriter {
             trie.root().clone()
         };
 
-        for (key, value) in trie_db.cache.iter() {
+        for (key, value) in trie_db.cache {
             match value {
                 Some(value) => batch.set(key, value),
                 None => batch.delete(key),

@@ -277,6 +277,18 @@ impl CacheState {
         self.0.accounts.get_buff()
     }
 
+    pub fn get_commit_changes(&self) -> HashMap<String, MapValue<AccountFrame>> {
+        let all = self.0.accounts.get_store();
+        let mut changes = HashMap::new();
+        for (k, v) in all.read().iter() {
+            if v.action == StateMapActionType::HOTLOAD || v.action == StateMapActionType::MAX {
+                continue;
+            }
+            changes.insert(k.clone(), v.clone());
+        }
+        changes
+    }
+
     pub fn new_stack_state(&self, double_copy: bool) -> CacheState {
         let state = CacheState(Arc::new(InnerCacheState {
             accounts: CacheMap::new(self.get_buff(), double_copy),

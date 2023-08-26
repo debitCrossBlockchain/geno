@@ -1,5 +1,5 @@
 use crate::utils::P2PUtils;
-use configure::ConfigureInstanceRef;
+use configure::CONFIGURE_INSTANCE_REF;
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
 use std::str::FromStr;
@@ -51,7 +51,7 @@ impl Default for NetworkConfig {
 
 impl NetworkConfig {
     pub fn new(config_type: NetworkConfigType) -> Self {
-        let conf = ConfigureInstanceRef.clone();
+        let conf = CONFIGURE_INSTANCE_REF.clone();
 
         let mut listen_addr_string = String::from("");
         let mut known_peers: Vec<String> = Vec::new();
@@ -134,11 +134,11 @@ impl NetworkConfig {
             known_peers: known_peers,
             listen_addr: listen_addr,
             local_addr: local_addr,
-            node_address: conf.address.to_string(),
+            node_address: conf.node_address.clone(),
             node_rand: Uuid::new_v4().to_string(),
             network_id: conf.network_id,
-            chain_id: conf.chain_id.to_string(),
-            chain_hub: conf.chain_hub.to_string(),
+            chain_id: conf.chain_id.clone(),
+            chain_hub: conf.chain_hub.clone(),
             target_conns_num: conf.p2p_network.target_peer_connection as i64,
         }
     }

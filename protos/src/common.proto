@@ -77,7 +77,8 @@ message Validator {
 }
 
 message ValidatorSet {
-  repeated Validator validators = 1;
+  uint64 epoch = 1;
+  repeated Validator validators = 2;
 }
 
 //for key value db storage
