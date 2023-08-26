@@ -111,14 +111,11 @@ impl Tree {
     }
 
     pub fn find_node(&self, hash: Vec<u8>) -> Node {
-        for vec_in_nodes in &self.base {
-            for node in vec_in_nodes {
-                if node.get_hash() == hash {
-                    return node.clone();
-                }
-            }
+        let mut node = Node::new();
+        if let Some(value) = self.node_list.get(&hash) {
+            node.clone_from(value);
         }
-        return Node::new();
+        return node;
     }
 
     pub fn println_nodes(&self) {
@@ -128,6 +125,14 @@ impl Tree {
                     "node hsah is:{:?}",
                     hash_bytes_to_string(node.get_hash().as_slice())
                 );
+            }
+        }
+    }
+
+    pub fn make_nodes(&mut self) {
+        for vec_in_nodes in &self.base {
+            for node in vec_in_nodes {
+                self.node_list.insert(node.clone().get_hash(), node.clone());
             }
         }
     }
@@ -186,8 +191,6 @@ impl Tree {
                     }
                 }
                 new_nodes.push(new_parent.clone());
-                self.node_list
-                    .insert(new_parent.clone().get_hash(), new_parent.clone());
             }
 
             self.base.push(new_nodes);
@@ -197,6 +200,7 @@ impl Tree {
             }
         }
 
+        self.make_nodes();
         if let Some(last) = self.base.last() {
             self.merkle_root = last[0].get_hash();
         }
@@ -208,7 +212,6 @@ impl Tree {
             let mut new_node = Node::new();
             new_node.set_hash(leaf.clone());
             new_nodes.push(new_node.clone());
-            self.node_list.insert(leaf.clone(), new_node.clone());
         }
 
         self.base.push(new_nodes);
@@ -388,6 +391,10 @@ fn test_audit_tree() {
 
     let mut audit_trail: Vec<MerkleProofHash> = Vec::new();
     tree.audit_proof(base_leafs[0].clone(), &mut audit_trail);
-    let result = tree.verify_audit(tree.merkle_root.clone(), base_leafs[0].clone(), &audit_trail);
+    let result = tree.verify_audit(
+        tree.merkle_root.clone(),
+        base_leafs[0].clone(),
+        &audit_trail,
+    );
     assert_eq!(true, result);
 }
