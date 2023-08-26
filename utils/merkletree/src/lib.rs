@@ -226,7 +226,7 @@ impl Tree {
             }
             let parent = self.find_node(act_hash.clone());
             el_node.clone_from(&parent);
-            if parent.get_parent().len() <= 0 {
+            if parent.get_parent().is_empty() {
                 break;
             }
         }
@@ -253,6 +253,9 @@ impl Tree {
         parent: &mut Vec<u8>,
         child: &mut Vec<u8>,
     ) {
+        if parent.clone().is_empty() {
+            return;
+        }
         let mut direction = Branch::OldRoot;
         let mut next_child: Vec<u8> = Vec::new();
         let parent_node = self.find_node(parent.clone());
@@ -271,7 +274,9 @@ impl Tree {
             direction: direction,
         });
 
-        if parent_node.get_parent().len() >= 1 {
+        parent.clone_from(&parent_node.get_parent());
+        child.clone_from(&parent_node.get_hash());
+        if !parent.is_empty() {
             self.build_audit_trail(audit_trail, parent, child);
         }
     }
@@ -297,10 +302,16 @@ impl Tree {
         return root_hash == act_hash;
     }
 
-    pub fn audit_proof(&mut self, leaf_hash: &mut Vec<u8>, audit_trail: &mut Vec<MerkleProofHash>) {
+    pub fn audit_proof(&mut self, leaf_hash: Vec<u8>, audit_trail: &mut Vec<MerkleProofHash>) {
         let mut leaf_node: Node = self.find_node(leaf_hash.clone());
+        if leaf_hash.is_empty() {
+            return;
+        }
         let mut parent_hash = leaf_node.get_parent();
-        self.build_audit_trail(audit_trail, &mut parent_hash, leaf_hash);
+        if parent_hash.is_empty() {
+            return;
+        }
+        self.build_audit_trail(audit_trail, &mut parent_hash, &mut leaf_node.get_hash());
     }
 }
 
@@ -366,38 +377,17 @@ fn test_single_tree() {
 #[test]
 fn test_audit_tree() {
     let mut tree = Tree::new();
-    let base_leafs = vec![
-        ("leaf1").as_bytes().to_vec(),
-        ("leaf2").as_bytes().to_vec(),
-        ("leaf3").as_bytes().to_vec(),
-        ("leaf4").as_bytes().to_vec(),
+    let mut base_leafs = vec![
+        hash_crypto(("leaf1").as_bytes().to_vec().as_slice()),
+        hash_crypto(("leaf2").as_bytes().to_vec().as_slice()),
+        hash_crypto(("leaf3").as_bytes().to_vec().as_slice()),
+        hash_crypto(("leaf4").as_bytes().to_vec().as_slice()),
     ];
-    tree.build_base_leafs(base_leafs);
+    tree.build_base_leafs(base_leafs.clone());
     tree.build_tree();
 
-    let hash = Tree::hash_merkle_branches(
-        ("5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9")
-            .as_bytes()
-            .to_vec(),
-        ("6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b")
-            .as_bytes()
-            .to_vec(),
-    );
     let mut audit_trail: Vec<MerkleProofHash> = Vec::new();
-    tree.audit_proof(
-        &mut ("4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5")
-            .as_bytes()
-            .to_vec(),
-        &mut audit_trail,
-    );
-    let result = tree.verify_audit(
-        ("a901f842b0016f1e350d20b751851a7179e26dfbb74b213c7a92d37f3c4fbb6c")
-            .as_bytes()
-            .to_vec(),
-        ("4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5")
-            .as_bytes()
-            .to_vec(),
-        &audit_trail,
-    );
+    tree.audit_proof(base_leafs[0].clone(), &mut audit_trail);
+    let result = tree.verify_audit(tree.merkle_root.clone(), base_leafs[0].clone(), &audit_trail);
     assert_eq!(true, result);
 }
