@@ -32,6 +32,8 @@ network = { path = "./network", version = "0.1.0" }
 msp = { path = "./msp", version = "0.1.0" }
 utils = { path = "./utils", version = "0.1.0" }
 state = { path = "./state", version = "0.1.0" }
+executor = { path = "./executor", version = "0.1.0" }
+
 
 [target.'cfg(unix)'.dependencies]
 jemallocator = { version = "0.3.2", features = [

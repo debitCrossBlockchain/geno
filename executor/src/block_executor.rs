@@ -1,6 +1,5 @@
-use std::collections::HashMap;
-
 use crate::block_result::BlockResult;
+use crate::LAST_COMMITTED_BLOCK_INFO_REF;
 use ledger_store::LedgerStorage;
 use protos::{
     common::{Validator, ValidatorSet},
@@ -8,6 +7,7 @@ use protos::{
 };
 use state::{cache_state::StateMapActionType, AccountFrame, CacheState, TrieHash, TrieWriter};
 use state_store::StateStorage;
+use std::collections::HashMap;
 use storage_db::{MemWriteBatch, WriteBatchTrait, STORAGE_INSTANCE_REF};
 use types::error::BlockExecutionError;
 use types::transaction::TransactionSignRaw;
@@ -20,7 +20,6 @@ pub struct BlockExecutor {}
 
 impl BlockExecutor {
     pub fn execute_block(
-        &self,
         block: Ledger,
     ) -> std::result::Result<(Vec<TransactionSignRaw>, BlockResult), BlockExecutionError> {
         let header = block.get_header();
@@ -77,7 +76,6 @@ impl BlockExecutor {
     }
 
     pub fn commit_block(
-        &self,
         block: &mut Ledger,
         txs: Vec<TransactionSignRaw>,
         result: &BlockResult,
@@ -87,10 +85,10 @@ impl BlockExecutor {
         let last_state_root_hash = if header.get_height() == utils::general::GENESIS_HEIGHT {
             None
         } else {
-            // get last header
-            Some(TrieHash::default())
+            Some(LAST_COMMITTED_BLOCK_INFO_REF.read().get_state_hash())
         };
 
+        // state commit and storage
         let mut state_batch = MemWriteBatch::new();
         let mut state_datas = HashMap::new();
         let state_changes = result.state.get_commit_changes();
@@ -225,5 +223,36 @@ impl BlockExecutor {
         };
 
         (block, result)
+    }
+
+    pub fn block_initialize() -> anyhow::Result<()> {
+        let (header, validators) = if let Some(height) = LedgerStorage::load_max_block_height()? {
+            let header = LedgerStorage::load_ledger_header_by_seq(height)?;
+            if let Some(header) = header {
+                let result = LedgerStorage::load_validators(&hex::encode(header.get_state_hash()))?;
+                if let Some(validators) = result {
+                    (header, validators)
+                } else {
+                    panic!("block initialize load validators failed:{}", height);
+                }
+            } else {
+                panic!("block initialize load block header failed:{}", height);
+            }
+        } else {
+            let (mut block, block_result) = Self::create_genesis_block();
+            if let Err(e) = Self::commit_block(&mut block, Vec::new(), &block_result) {
+                panic!("block initialize genesis failed:{}", e);
+            }
+            (
+                block.get_header().clone(),
+                block_result.validator_set.clone(),
+            )
+        };
+
+        LAST_COMMITTED_BLOCK_INFO_REF
+            .write()
+            .update(&header, &validators);
+
+        Ok(())
     }
 }

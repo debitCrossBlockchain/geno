@@ -12,6 +12,7 @@ use utils::{
     TransactionSign,
 };
 
+pub const KEY_LEDGER_SEQ_PREFIX: &str = "ledger_max_seq";
 pub const LEDGER_PREFIX: &str = "lg";
 pub const LEDGER_HASH_PREFIX: &str = "lg_hash";
 pub const TRANSACTION_PREFIX: &str = "tx";
@@ -86,6 +87,27 @@ impl LedgerStorage {
         } else {
             Ok(None)
         }
+    }
+
+    pub fn load_max_block_height() -> anyhow::Result<Option<u64>> {
+        let result = STORAGE_INSTANCE_REF
+            .ledger_db()
+            .lock()
+            .get(KEY_LEDGER_SEQ_PREFIX.as_bytes())?;
+
+        if let Some(value) = result {
+            let height = utils::general::vector_2_u64(value);
+            Ok(Some(height))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn store_max_block_height(batch: &mut MemWriteBatch, height: u64) {
+        batch.set(
+            KEY_LEDGER_SEQ_PREFIX.as_bytes().to_vec(),
+            utils::general::u64_2_vector(height),
+        );
     }
 
     pub fn store_ledger_header(batch: &mut MemWriteBatch, header: &LedgerHeader) {
