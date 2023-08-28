@@ -1,5 +1,7 @@
 use msp::{bytes_to_hex_str, hex_str_to_bytes};
-use std::ops::DerefMut;
+use std::clone;
+use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
 use std::{
     borrow::BorrowMut,
     collections::LinkedList,
@@ -7,10 +9,9 @@ use std::{
 };
 use utils::general::{hash_bytes_to_string, hash_crypto};
 
-#[derive(Clone)]
 struct Node {
-    parent: Option<Box<Node>>,
-    children: [Option<Box<Node>>; 2],
+    parent: Vec<u8>,
+    children: [Vec<u8>; 2],
     hash: Vec<u8>,
 }
 
@@ -20,11 +21,25 @@ impl PartialEq for Node {
     }
 }
 
+impl Clone for Node {
+    fn clone_from(&mut self, source: &Self) {
+        *self = source.clone()
+    }
+
+    fn clone(&self) -> Self {
+        Self {
+            parent: self.parent.clone(),
+            children: [self.children[0].clone(), self.children[1].clone()],
+            hash: self.hash.clone(),
+        }
+    }
+}
+
 impl Node {
     pub fn new() -> Node {
         Node {
-            parent: None,
-            children: [None, None],
+            parent: Vec::new(),
+            children: [Vec::new(), Vec::new()],
             hash: Vec::new(),
         }
     }
@@ -33,57 +48,29 @@ impl Node {
         self.hash.clone_from(&hash);
     }
 
-    pub fn get_parent(&self) -> Option<&Box<Node>> {
-        self.parent.as_ref()
+    pub fn get_parent(&self) -> Vec<u8> {
+        self.parent.clone()
     }
 
-    pub fn set_parent(&mut self, parent: Box<Node>) {
-        self.parent = Some(parent);
+    pub fn set_parent(&mut self, parent: Vec<u8>) {
+        self.parent.clone_from(&parent);
     }
 
-    pub fn set_children(&mut self, children_l: Box<Node>, children_r: Box<Node>) {
-        self.children[0] = Some(children_l);
-        self.children[1] = Some(children_r);
+    pub fn set_children(&mut self, children_l: Vec<u8>, children_r: Vec<u8>) {
+        self.children[0].clone_from(&children_l);
+        self.children[1].clone_from(&children_r);
     }
 
-    pub fn get_sibling(&self) -> Option<&Box<Node>> {
-        let parent = self.get_parent();
-        match parent {
-            Some(p) => {
-                if self.eq(p.children[0].as_ref().unwrap()) {
-                    return p.children[1].as_ref();
-                } else {
-                    return p.children[0].as_ref();
-                }
-            }
-            None => None,
-        }
-    }
-
-    pub fn get_children(&self, index: usize) -> Option<&Box<Node>> {
+    pub fn get_children(&self, index: usize) -> Vec<u8> {
         if index <= 1 {
-            return self.children[index].as_ref();
+            return self.children[index].clone();
         } else {
-            return None;
+            return Vec::new();
         }
     }
 
     pub fn get_hash(&self) -> Vec<u8> {
         self.hash.clone()
-    }
-
-    pub fn check_dir(&self) -> bool {
-        let parent = self.get_parent();
-        match parent {
-            Some(p) => {
-                if self.eq(p.children[0].as_ref().unwrap()) {
-                    return false;
-                } else {
-                    return true;
-                }
-            }
-            None => false,
-        }
     }
 }
 
@@ -109,109 +96,145 @@ impl MerkleProofHash {
 }
 
 struct Tree {
-    base: Arc<Mutex<Vec<Vec<Box<Node>>>>>,
+    base: Vec<Vec<Node>>,
     merkle_root: Vec<u8>,
-    node_list: Arc<Mutex<Vec<Box<Node>>>>,
+    node_list: HashMap<Vec<u8>, Node>,
 }
 
 impl Tree {
     pub fn new() -> Tree {
         Tree {
-            base: Arc::new(Mutex::new(Vec::new())),
+            base: Vec::new(),
             merkle_root: Vec::new(),
-            node_list: Arc::new(Mutex::new(Vec::new())),
+            node_list: HashMap::new(),
+        }
+    }
+
+    pub fn find_node(&self, hash: Vec<u8>) -> Node {
+        let mut node = Node::new();
+        if let Some(value) = self.node_list.get(&hash) {
+            node.clone_from(value);
+        }
+        return node;
+    }
+
+    pub fn println_nodes(&self) {
+        for vec_in_nodes in &self.base {
+            for node in vec_in_nodes {
+                println!(
+                    "node hsah is:{:?}",
+                    hash_bytes_to_string(node.get_hash().as_slice())
+                );
+            }
+        }
+    }
+
+    pub fn make_nodes(&mut self) {
+        for vec_in_nodes in &self.base {
+            for node in vec_in_nodes {
+                self.node_list.insert(node.clone().get_hash(), node.clone());
+            }
+        }
+    }
+
+    pub fn get_sibling(&self, node: &Node) -> Vec<u8> {
+        let parent = self.find_node(node.get_parent());
+        let children_0 = self.find_node(parent.get_children(0));
+        if node.eq(&children_0) {
+            return parent.get_children(1);
+        } else {
+            return parent.get_children(0);
+        }
+    }
+
+    pub fn check_dir(&self, node: &Node) -> bool {
+        let parent = self.find_node(node.get_parent());
+        let children_0 = self.find_node(parent.get_children(0));
+        if node.eq(&children_0) {
+            return false;
+        } else {
+            return true;
         }
     }
 
     pub fn make_binary(&mut self) -> usize {
-        let vect_size = (self.base.lock().unwrap().last().unwrap()).len();
-        if vect_size % 2 != 0 {
-            (self.base.lock().unwrap().last_mut().unwrap())
-                .push(self.base.lock().unwrap().last_mut().unwrap()[vect_size - 1].clone());
-            return vect_size + 1;
+        let mut vect_size = 0;
+        if let Some(last) = self.base.last_mut() {
+            vect_size = last.len();
+            if vect_size % 2 != 0 {
+                last.push(last[vect_size - 1].clone());
+                return vect_size + 1;
+            }
         }
         vect_size
     }
 
     fn build_tree(&mut self) {
         loop {
-            let mut new_nodes: Vec<Box<Node>> = Vec::new();
+            let mut new_nodes: Vec<Node> = Vec::new();
             let vect_size = self.make_binary();
 
             for i in (0..vect_size).step_by(2) {
-                let mut new_parent = Box::new(Node::new());
-                (self.base.lock().unwrap().last_mut().unwrap()[i].set_parent(new_parent.clone()));
-                (self.base.lock().unwrap().last_mut().unwrap()[i + 1]
-                    .set_parent(new_parent.clone()));
-
-                let hash = Self::hash_merkle_branches(
-                    (self.base.lock().unwrap().last().unwrap()[i].get_hash()),
-                    (self.base.lock().unwrap().last().unwrap()[i + 1].get_hash()),
-                );
-                new_parent.set_hash(hash);
-
-                new_parent.set_children(
-                    self.base.lock().unwrap().last().unwrap()[i].clone(),
-                    self.base.lock().unwrap().last().unwrap()[i + 1].clone(),
-                );
-
-                new_nodes.push(new_parent);
+                let mut new_parent = Node::new();
+                if let Some(last) = self.base.last_mut() {
+                    let hash =
+                        Self::hash_merkle_branches((last[i].get_hash()), (last[i + 1].get_hash()));
+                    new_parent.set_hash(hash.clone());
+                    last[i].set_parent(hash.clone());
+                    last[i + 1].set_parent(hash.clone());
+                    new_parent.set_children(last[i].get_hash(), last[i + 1].get_hash());
+                    if let Some(last_i) = self.node_list.get_mut(&last[i].get_hash()) {
+                        last_i.set_parent(hash.clone());
+                    }
+                    if let Some(last_i1) = self.node_list.get_mut(&last[i + 1].get_hash()) {
+                        last_i1.set_parent(hash.clone());
+                    }
+                }
+                new_nodes.push(new_parent.clone());
             }
 
-            (self.node_list.lock().unwrap().append(&mut new_nodes));
-            (self.base.lock().unwrap().push(new_nodes));
+            self.base.push(new_nodes);
 
-            if (self.base.lock().unwrap().last().unwrap().len()) <= 1 {
+            if self.base.last().unwrap().len() <= 1 {
                 break;
             }
         }
 
-        self.merkle_root = self.base.lock().unwrap().last_mut().unwrap()[0].get_hash();
+        self.make_nodes();
+        if let Some(last) = self.base.last() {
+            self.merkle_root = last[0].get_hash();
+        }
     }
 
     pub fn build_base_leafs(&mut self, base_leafs: Vec<Vec<u8>>) {
-        let mut new_nodes: Vec<Box<Node>> = Vec::new();
+        let mut new_nodes: Vec<Node> = Vec::new();
         for leaf in base_leafs {
-            let mut new_node = Box::new(Node::new());
+            let mut new_node = Node::new();
             new_node.set_hash(leaf.clone());
-            new_nodes.push(new_node);
+            new_nodes.push(new_node.clone());
         }
 
-        self.node_list.lock().unwrap().append(&mut new_nodes);
+        self.base.push(new_nodes);
     }
 
     pub fn verify(&self, hash: Vec<u8>) -> bool {
-        let mut el_node: Option<Box<Node>> = None;
-        let tem_hash = hash.clone();
-        let mut act_hash = hash;
-        let len = (self.base.lock().unwrap().first().unwrap().len());
-        for i in 0..len {
-            if (self.base.lock().unwrap().first().unwrap()[i].get_hash()) == tem_hash {
-                el_node = Some(self.base.lock().unwrap().first().unwrap()[i].clone());
-            }
-        }
-
-        if el_node.is_none() {
-            return false;
-        }
-
-        let mut el_node = el_node.unwrap();
+        let mut el_node: Node = self.find_node(hash.clone());
+        let mut act_hash = hash.clone();
         loop {
-            if el_node.check_dir() == false {
-                act_hash =
-                    Self::hash_merkle_branches(act_hash, el_node.get_sibling().unwrap().get_hash());
+            let mut sibling_hash = self.get_sibling(&el_node);
+            if self.check_dir(&el_node) == false {
+                act_hash.clone_from(&Self::hash_merkle_branches(act_hash.clone(), sibling_hash));
             } else {
-                act_hash =
-                    Self::hash_merkle_branches(el_node.get_sibling().unwrap().get_hash(), act_hash);
+                act_hash.clone_from(&Self::hash_merkle_branches(sibling_hash, act_hash.clone()));
             }
-
-            match el_node.get_parent() {
-                Some(p) => el_node = p.clone(),
-                None => break,
+            let parent = self.find_node(act_hash.clone());
+            el_node.clone_from(&parent);
+            if parent.get_parent().is_empty() {
+                break;
             }
         }
 
-        if tem_hash == self.merkle_root {
+        if act_hash == self.merkle_root {
             return true;
         } else {
             return false;
@@ -224,36 +247,40 @@ impl Tree {
             hash_bytes_to_string(left.as_slice()),
             hash_bytes_to_string(right.as_slice())
         );
-        hash_crypto(hex_str_to_bytes(hash_str.as_str()).unwrap().as_slice())
+        hash_crypto(hash_str.as_bytes().to_vec().as_slice())
     }
 
     pub fn build_audit_trail(
         &mut self,
         audit_trail: &mut Vec<MerkleProofHash>,
-        parent: &mut &Box<Node>,
-        child: &mut &Box<Node>,
+        parent: &mut Vec<u8>,
+        child: &mut Vec<u8>,
     ) {
+        if parent.clone().is_empty() {
+            return;
+        }
         let mut direction = Branch::OldRoot;
-        let mut next_child: Option<Box<Node>> = None;
-        if let Some(children) = parent.get_children(0) {
-            if children.eq(child) {
-                next_child = Some(parent.get_children(1).unwrap().clone());
-                direction = Branch::Left;
-            } else {
-                next_child = Some(parent.get_children(0).unwrap().clone());
-                direction = Branch::Right;
-            }
+        let mut next_child: Vec<u8> = Vec::new();
+        let parent_node = self.find_node(parent.clone());
+        let children_node = self.find_node(parent_node.get_children(0));
+        let child_node = self.find_node(child.clone());
+        if children_node.eq(&child_node) {
+            next_child = parent_node.get_children(1);
+            direction = Branch::Left;
+        } else {
+            next_child = parent_node.get_children(0);
+            direction = Branch::Right;
+        }
 
-            audit_trail.push(MerkleProofHash {
-                hash: next_child.unwrap().get_hash(),
-                direction: direction,
-            });
+        audit_trail.push(MerkleProofHash {
+            hash: next_child,
+            direction: direction,
+        });
 
-            if let Some(c) = (&mut child.get_parent()).as_mut() {
-                if let Some(p) = c.get_parent().as_mut() {
-                    self.build_audit_trail(audit_trail, p, c);
-                }
-            }
+        parent.clone_from(&parent_node.get_parent());
+        child.clone_from(&parent_node.get_hash());
+        if !parent.is_empty() {
+            self.build_audit_trail(audit_trail, parent, child);
         }
     }
 
@@ -267,66 +294,107 @@ impl Tree {
             return false;
         }
 
-        let mut test_hash = Vec::from(leaf_hash);
+        let mut act_hash = Vec::from(leaf_hash);
         for proof_hash in audit_trail {
             if proof_hash.direction == Branch::Left {
-                test_hash = Self::hash_merkle_branches(test_hash, proof_hash.hash.clone());
+                act_hash = Self::hash_merkle_branches(act_hash, proof_hash.hash.clone());
             } else {
-                test_hash = Self::hash_merkle_branches(proof_hash.hash.clone(), test_hash);
+                act_hash = Self::hash_merkle_branches(proof_hash.hash.clone(), act_hash);
             }
         }
-        return root_hash == test_hash;
+        return root_hash == act_hash;
     }
 
     pub fn audit_proof(&mut self, leaf_hash: Vec<u8>, audit_trail: &mut Vec<MerkleProofHash>) {
-        let leaf_node: Arc<Mutex<Box<Node>>> = Arc::new(Mutex::new(Box::new(Node::new())));
-        let act_hash = Vec::from(leaf_hash);
-        let len = (self.base.lock().unwrap().first().unwrap().len());
-        let tem_hash = act_hash.clone();
-        for i in 0..len {
-            if let Some(first) = (self.base.lock().unwrap().first()) {
-                if (first[i].get_hash()) == tem_hash {
-                    (*leaf_node.lock().unwrap()).clone_from(&first[i]) ;
-                }
-            }
+        let mut leaf_node: Node = self.find_node(leaf_hash.clone());
+        if leaf_hash.is_empty() {
+            return;
         }
-
-        if let Some(parent) = (leaf_node.clone().lock().as_mut()).expect("REASON").get_parent().as_mut() {
-            self.build_audit_trail(audit_trail, parent, &mut (&*leaf_node.lock().unwrap()));
+        let mut parent_hash = leaf_node.get_parent();
+        if parent_hash.is_empty() {
+            return;
         }
+        self.build_audit_trail(audit_trail, &mut parent_hash, &mut leaf_node.get_hash());
     }
-
 }
 
 #[test]
-fn test_tree(){
-
+fn test_double_tree() {
     let mut tree = Tree::new();
     let base_leafs = vec![
-        hex_str_to_bytes("leaf1").unwrap(),
-        hex_str_to_bytes("leaf2").unwrap(),
-        hex_str_to_bytes("leaf3").unwrap(),
-        hex_str_to_bytes("leaf4").unwrap(),
+        hash_crypto(&[0]),
+        hash_crypto(&[1]),
+        hash_crypto(&[2]),
+        hash_crypto(&[3]),
+        hash_crypto(&[4]),
+        hash_crypto(&[5]),
+        hash_crypto(&[6]),
+        hash_crypto(&[7]),
+        hash_crypto(&[8]),
+        hash_crypto(&[9]),
+        hash_crypto(&[10]),
+        hash_crypto(&[11]),
+        hash_crypto(&[12]),
+        hash_crypto(&[13]),
+        hash_crypto(&[14]),
+        hash_crypto(&[15]),
     ];
-    tree.build_base_leafs(base_leafs);
+    tree.build_base_leafs(base_leafs.clone());
     tree.build_tree();
-   
-
-    let hash = Tree::hash_merkle_branches(
-        hex_str_to_bytes("5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9").unwrap(),
-        hex_str_to_bytes("6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b").unwrap(),
-    );
-    let mut audit_trail: Vec<MerkleProofHash> = Vec::new();
-    tree.audit_proof(
-        hex_str_to_bytes("4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5").unwrap(),
-        &mut audit_trail,
-    );
-    tree.verify_audit(
-        hex_str_to_bytes("a901f842b0016f1e350d20b751851a7179e26dfbb74b213c7a92d37f3c4fbb6c").unwrap(),
-        hex_str_to_bytes("4a44dc15364204a80fe80e9039455cc1608281820fe2b24f1e5233ade6af1dd5").unwrap(),
-        &audit_trail,
-    );
-
+    tree.println_nodes();
+    for node in base_leafs.clone() {
+        let result = tree.verify(node);
+        assert_eq!(true, result);
+    }
 }
 
+#[test]
+fn test_single_tree() {
+    let mut tree = Tree::new();
+    let base_leafs = vec![
+        hash_crypto(&[1]),
+        hash_crypto(&[2]),
+        hash_crypto(&[3]),
+        hash_crypto(&[4]),
+        hash_crypto(&[5]),
+        hash_crypto(&[6]),
+        hash_crypto(&[7]),
+        hash_crypto(&[8]),
+        hash_crypto(&[9]),
+        hash_crypto(&[10]),
+        hash_crypto(&[11]),
+        hash_crypto(&[12]),
+        hash_crypto(&[13]),
+        hash_crypto(&[14]),
+        hash_crypto(&[15]),
+    ];
+    tree.build_base_leafs(base_leafs.clone());
+    tree.build_tree();
+    tree.println_nodes();
+    for node in base_leafs.clone() {
+        let result = tree.verify(node);
+        assert_eq!(true, result);
+    }
+}
 
+#[test]
+fn test_audit_tree() {
+    let mut tree = Tree::new();
+    let mut base_leafs = vec![
+        hash_crypto(("leaf1").as_bytes().to_vec().as_slice()),
+        hash_crypto(("leaf2").as_bytes().to_vec().as_slice()),
+        hash_crypto(("leaf3").as_bytes().to_vec().as_slice()),
+        hash_crypto(("leaf4").as_bytes().to_vec().as_slice()),
+    ];
+    tree.build_base_leafs(base_leafs.clone());
+    tree.build_tree();
+
+    let mut audit_trail: Vec<MerkleProofHash> = Vec::new();
+    tree.audit_proof(base_leafs[0].clone(), &mut audit_trail);
+    let result = tree.verify_audit(
+        tree.merkle_root.clone(),
+        base_leafs[0].clone(),
+        &audit_trail,
+    );
+    assert_eq!(true, result);
+}
