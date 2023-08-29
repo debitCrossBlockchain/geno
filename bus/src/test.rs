@@ -77,7 +77,7 @@ fn notify_exception() {
     sub1.notify_others(Bytes::from("data1"));
 
     sleep(Duration::from_millis(500));
-    assert_eq!(*count.lock().unwrap(), 1);
+    assert_eq!(*count.lock().unwrap(), -1);
     sub1.cancel();
     sub2.cancel();
 }

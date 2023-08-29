@@ -191,7 +191,7 @@ impl Bus{
 						{  
                             let mut inner = bus.inner.lock().unwrap();
 							if let Some(subs) = inner.channels.get_mut(&channel){
-								if let Ok(msg) = subs.receiver.recv_timeout(Duration::from_millis(1)) {
+								if let Ok(msg) = subs.receiver.try_recv() {
                                             notification_message.clone_from(&msg);
                                    }    
 							}
