@@ -30,13 +30,15 @@ hotwatch = "0.4.6"
 tracing = "0.1.29"
 tracing-appender = "0.2.0"
 tracing-subscriber = { version = "0.3.5", features = [
+    "fmt",
+    "std",
     "env-filter",
     "json",
     "time",
     "local-time",
 ] }
-# time = { version = "0.3.7", features = ["macros"] }
-time = { version = "0.3.7" }
+time = { version = "0.3", features = ["macros"] }
+tracing-local-time = { git = "https://github.com/clia/tracing-local-time.git" }
 
 [dev-dependencies]
 actix-rt = "*"

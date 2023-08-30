@@ -35,3 +35,4 @@ tokio = { version = "1.17.0", features = [
 tokio-util = { version = "0.7", features = ["codec"] }
 hex-literal = "0.3"
 hex = "0.4"
+lazy_static = "1.4.0"

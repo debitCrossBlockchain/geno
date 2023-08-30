@@ -1,4 +1,5 @@
-use utils::logger::{LogInstance, LogUtil};
+use executor::BlockExecutor;
+use utils::logger::LogUtil;
 
 #[cfg(not(target_os = "windows"))]
 #[global_allocator]
@@ -8,7 +9,6 @@ const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 fn main() {
     let _guard = LogUtil::init("./log", "app.log", "setting/log_filter.txt").unwrap();
-    let log_instance = LogInstance::new();
 
     let info = format!(
         "branch={} commit={} source_timestamp={}",
@@ -16,4 +16,8 @@ fn main() {
         env!("GIT_COMMIT"),
         env!("SOURCE_TIMESTAMP"),
     );
+
+    if let Err(e) = BlockExecutor::block_initialize() {
+        panic!("start error:{}", e);
+    }
 }

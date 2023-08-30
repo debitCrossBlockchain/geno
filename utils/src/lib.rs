@@ -11,12 +11,5 @@ pub mod tbft_proof;
 pub mod timer;
 pub mod timer_manager;
 pub mod timing;
-pub use logger::{LogInstance, LogUtil};
+pub use logger::LogUtil;
 pub use protos::ledger::TransactionSign;
-
-#[macro_use]
-extern crate lazy_static;
-
-lazy_static! {
-    pub static ref LOG_INSTANCE_REF: LogInstance = LogInstance::new();
-}
