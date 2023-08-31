@@ -13,12 +13,12 @@ mod data_back;
 mod db;
 mod fees;
 mod genesis_block;
-mod json_rpc_config;
+mod jsonrpc;
 mod ledger;
 mod p2p_network;
 mod ssl;
-mod tx_pool_config;
-mod websocket_config;
+mod tx_pool;
+mod websocket;
 
 use config::*;
 pub use configure::Configure;
@@ -26,12 +26,12 @@ pub use consensus::Consensus;
 pub use db::Db;
 pub use fees::Fees;
 pub use genesis_block::GenesisBlock;
-pub use json_rpc_config::JsonRpcConfig;
+pub use jsonrpc::JsonRpcConfig;
 pub use ledger::Ledger;
 pub use p2p_network::P2PNetwork;
 pub use ssl::SSL;
-pub use tx_pool_config::TxPoolConfig;
-pub use websocket_config::Websocket;
+pub use tx_pool::TxPoolConfig;
+pub use websocket::WebsocketConfig;
 
 use std::sync::Arc;
 lazy_static! {

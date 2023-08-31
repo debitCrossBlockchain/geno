@@ -1,13 +1,9 @@
-use crate::data_back::Data_back_config;
 use crate::{
-    Consensus, Db, Fees, GenesisBlock, JsonRpcConfig, Ledger, P2PNetwork, TxPoolConfig, Websocket,
-    SSL,
+    Consensus, Db, Fees, GenesisBlock, JsonRpcConfig, Ledger, P2PNetwork, TxPoolConfig,
+    WebsocketConfig, SSL,
 };
 use serde;
-use serde::{Deserialize, Serialize};
-use serde_derive;
-use std::ops::Deref;
-
+use serde::Deserialize;
 #[derive(Debug, Deserialize, Clone)]
 pub struct Configure {
     pub network_id: u64,
@@ -24,16 +20,7 @@ pub struct Configure {
     pub consensus: Consensus,
     pub ledger: Ledger,
     pub fees: Fees,
-    pub tx_pool_config: TxPoolConfig,
-    pub json_rpc_config: JsonRpcConfig,
-    pub websocket_config: Websocket,
-    pub data_back_config: Data_back_config,
-}
-
-impl Default for Configure {
-    fn default() -> Self {
-        Self {
-            ..Default::default()
-        }
-    }
+    pub tx_pool: TxPoolConfig,
+    pub json_rpc: JsonRpcConfig,
+    pub websocket: WebsocketConfig,
 }

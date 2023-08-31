@@ -21,6 +21,7 @@ members = [
     "storage/storage-db",
     "storage/ledger-store",
     "storage/state-store",
+    "jsonrpc",
 ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
