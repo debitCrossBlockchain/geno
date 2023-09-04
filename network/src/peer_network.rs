@@ -514,7 +514,8 @@ impl PeerNetwork {
             | ProtocolsMessageType::LEDGER_UPGRADE_NOTIFY => {
                 self.handle_broadcast(peer_endpoint, message, publisher);
             }
-            ProtocolsMessageType::LEDGERS
+            ProtocolsMessageType::SYNCBLOCK
+            | ProtocolsMessageType::SYNCCHAIN
             | ProtocolsMessageType::LIGHT
             | ProtocolsMessageType::TRANSACTION_SYNC => {
                 if let Some(handle) = self

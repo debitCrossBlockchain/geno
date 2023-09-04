@@ -22,11 +22,12 @@ enum ProtocolsMessageType{
   PING = 2;
   PEERS = 3;
   TRANSACTION = 4;
-  LEDGERS = 5;
+  SYNCCHAIN = 5;
   CONSENSUS = 6;
   LEDGER_UPGRADE_NOTIFY = 7; 
   LIGHT = 8;
   TRANSACTION_SYNC = 9;
+  SYNCBLOCK = 10;
 }
 
 //for ping messsage

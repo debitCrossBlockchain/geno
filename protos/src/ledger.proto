@@ -137,36 +137,34 @@ message Account{
 
 
 //for sync
-message GetLedgers
+message SyncChain
+{
+	int64 height = 1;
+  int64 hash   = 2;
+	string chain_id = 3;
+}
+
+message SyncChainStatus
+{
+	int64 height = 1;
+  string hash   = 2;
+	string chain_id = 3;
+}
+
+message SyncBlockRequest
 {
 	int64 begin = 1;
 	int64 end   = 2;
-	int64 timestamp  = 3;
-	string chain_id = 4;
-  uint64 trigger = 5;
+  string hash   = 3;
+  string chain_id = 4;
+  int64 requestid  = 5;
 }
 
-message SyncStat
+message SyncBlockResponse
 {
-    int64 send_time = 1;
-    int64 probation = 2;
-    GetLedgers get_ledgers = 3;
-}
-
-message Ledgers
-{
-	enum SyncCode{
-		OK = 0;             //Success
-		OUT_OF_SYNC = 1;    //The node itself is not in sync status
-		OUT_OF_LEDGERS = 2; //Too many requested ledgers
-		BUSY = 3;           //This node is occupied
-		REFUSE = 4;         //The node itself is not allow sync
-		INTERNAL = 5;       //Inner error
-	}
-	repeated BftValue values = 1;
-	SyncCode sync_code = 2;
-	int64    max_seq = 3;
-	ConsensusProof    proof = 4;
-	string   chain_id = 5;
-  uint64 trigger = 6;
+	int64 number = 1;
+	int64 requestid  = 2;
+  bool  finish = 3;
+  string chain_id = 4;
+  repeated Ledger blocks = 5;
 }

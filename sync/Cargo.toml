@@ -1,0 +1,25 @@
+[package]
+name = "sync"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+
+utils = { path = "../utils", version = "0.1.0" }
+state = { path = "../state", version = "0.1.0" }
+vm = { path = "../vm", version = "0.1.0" }
+types = { path = "../types", version = "0.1.0" }
+protos = { path = "../protos", version = "0.1.0" }
+network = { path = "../network", version = "0.1.0" }
+executor = { path = "../executor", version = "0.1.0" }
+ledger-store = { path = "../storage/ledger-store", version = "0.1.0" }
+crossbeam-channel = "0.5.6"
+fxhash = "0.2"
+parking_lot = "0.11"
+protobuf = { version = "2.27.1", features = ["with-bytes"] }
+chrono = "0.4.19"
+anyhow = "1.0.52"

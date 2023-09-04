@@ -1,5 +1,6 @@
 use crate::block_result::BlockResult;
 use crate::LAST_COMMITTED_BLOCK_INFO_REF;
+use anyhow::bail;
 use ledger_store::LedgerStorage;
 use protos::{
     common::{Validator, ValidatorSet},
@@ -20,7 +21,7 @@ pub struct BlockExecutor {}
 
 impl BlockExecutor {
     pub fn execute_block(
-        block: Ledger,
+        block: &Ledger,
     ) -> std::result::Result<(Vec<TransactionSignRaw>, BlockResult), BlockExecutionError> {
         let header = block.get_header();
 
@@ -224,6 +225,114 @@ impl BlockExecutor {
 
         (block, result)
     }
+
+    pub fn commit_sync_block(
+        block: &Ledger,
+        txs: Vec<TransactionSignRaw>,
+        result: &BlockResult,
+    ) -> anyhow::Result<()> {
+        let mut header = block.get_header().clone();
+
+        let last_state_root_hash = if header.get_height() == utils::general::GENESIS_HEIGHT {
+            None
+        } else {
+            Some(LAST_COMMITTED_BLOCK_INFO_REF.read().get_state_hash())
+        };
+
+        // state commit and storage
+        let mut state_batch = MemWriteBatch::new();
+        let mut state_datas = HashMap::new();
+        let state_changes = result.state.get_commit_changes();
+        for (address, mut value) in state_changes {
+            value.data.commit_metadata_trie(&mut state_batch)?;
+            match value.action {
+                StateMapActionType::UPSERT => {
+                    state_datas.insert(address.as_bytes().to_vec(), Some(value.data.serialize()));
+
+                    // store code hash : address
+                    if value.data.has_contract() {
+                        StateStorage::store_codehash_address_map(
+                            &value.data.contract_code_hash(),
+                            &address,
+                            &mut state_batch,
+                        );
+                    }
+                }
+                StateMapActionType::DELETE => {
+                    state_datas.insert(address.as_bytes().to_vec(), None);
+                }
+                _ => {}
+            }
+        }
+
+        let state_db = STORAGE_INSTANCE_REF.account_db();
+        let state_root_hash = TrieWriter::commit(
+            state_db,
+            last_state_root_hash,
+            &state_datas,
+            &mut state_batch,
+        )?;
+        StateStorage::commit(state_batch)?;
+
+        // set state hash
+        header.set_state_hash(state_root_hash.to_vec());
+
+        // caculate txs hash
+        let mut txs_store = HashMap::with_capacity(block.get_transaction_signs().len());
+        for (i, t) in txs.iter().enumerate() {
+            let mut tx_store = TransactionSignStore::default();
+            let tx_hash = t.tx.hash().to_vec();
+
+            tx_store.set_transaction_sign(block.get_transaction_signs().get(i).unwrap().clone());
+            tx_store.set_transaction_result(result.tx_result_set.get(i).unwrap().clone());
+            txs_store.insert(tx_hash, tx_store);
+        }
+
+        // caculate receips hash
+
+        // caculate fee hash
+
+        // caculate validators hash
+        let validator_hash = hash_crypto_byte(&ProtocolParser::serialize::<ValidatorSet>(
+            &result.validator_set,
+        ));
+        header.set_validators_hash(validator_hash);
+
+        header.set_hash(hash_crypto_byte(
+            &ProtocolParser::serialize::<LedgerHeader>(&header),
+        ));
+
+        let mut ledger_batch = MemWriteBatch::new();
+        LedgerStorage::store_validators(&mut ledger_batch, &result.validator_set);
+        LedgerStorage::store_ledger(&mut ledger_batch, &header, &txs_store);
+        LedgerStorage::commit(ledger_batch)?;
+
+        //block.set_header(header);
+
+        Ok(())
+    }
+
+
+    pub fn verify_block(&self, block: &Ledger) -> anyhow::Result<()>{
+        Ok(())
+    }
+
+    pub fn execute_verify_block(&self, block: Ledger,)->anyhow::Result<()> {
+        match self.verify_block(&block){
+            Ok(_) => (),
+            Err(e) => bail!(e),
+        }
+
+        let (a,b) = match BlockExecutor::execute_block(&block){
+            Ok((a,b)) => (a,b),
+            Err(e) => bail!(e),
+        };
+
+        BlockExecutor::commit_sync_block(&block, a, &b)
+    }
+
+    pub fn execute_transaction(&self, block: &TransactionSign) {}
+
 
     pub fn block_initialize() -> anyhow::Result<()> {
         let (header, validators) = if let Some(height) = LedgerStorage::load_max_block_height()? {
