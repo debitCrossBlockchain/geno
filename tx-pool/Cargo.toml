@@ -1,0 +1,40 @@
+[package]
+name = "tx-pool"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.38"
+base64 = "0.12.1"
+fail = "0.4.0"
+itertools = "0.10.0"
+once_cell = "1.9.0"
+rand = "0.8.3"
+hex = "0.4.3"
+async-trait = "0.1"
+lazy_static = "1.4.0"
+chrono = "0.4.19"
+futures = "0.3.21"
+types = { path = "../types", version = "0.1.0" }
+state = { path = "../state", version = "0.1.0" }
+utils = { path = "../utils", version = "0.1.0" }
+network = { path = "../network", version = "0.1.0" }
+configure = { path = "../configure", version = "0.1.0" }
+prometheus = { version = "0.12.0", default-features = false }
+proptest = { version = "1.0.0", optional = true }
+rayon = "1.4.1"
+serde = { version = "1.0.124", default-features = false }
+tokio = { version = "1.17.0", features = ["full"] }
+tokio-stream = "0.1.4"
+msp = { path = "../msp", version = "0.1.0" }
+parking_lot = "0.11"
+protos = { path = "../protos", version = "0.1.0" }
+protobuf = { version = "2.27.1", features = ["with-bytes"] }
+lru-cache = "0.1"
+tracing = "0.1.29"
+
+[dev-dependencies]
+criterion = "0.3"
+actix-rt = "*"

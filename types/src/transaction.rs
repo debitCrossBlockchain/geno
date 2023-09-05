@@ -2,6 +2,8 @@ use protobuf::Message;
 use protos::common::Signature;
 use protos::ledger::*;
 use utils::general::hash_crypto_byte;
+
+#[derive(Clone,Default)]
 pub struct TransactionRaw {
     tx_hash: Vec<u8>,
     source: String,
@@ -91,9 +93,11 @@ impl TransactionRaw {
     }
 }
 
+#[derive(Clone,Default)]
 pub struct TransactionSignRaw {
     pub tx: TransactionRaw,
     pub signatures: Vec<Signature>,
+    pub source_type:TransactionSign_SourceType,
 }
 
 impl TryFrom<TransactionSign> for TransactionSignRaw {
@@ -107,6 +111,7 @@ impl TryFrom<TransactionSign> for TransactionSignRaw {
                 .into_iter()
                 .map(|s| s.clone())
                 .collect(),
+            source_type: tx_sign.get_source_type(),
         })
     }
 }
