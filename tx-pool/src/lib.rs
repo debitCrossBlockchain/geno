@@ -63,7 +63,6 @@
 // };
 // #[cfg(any(test, feature = "fuzzing"))]
 // pub use tests::{fuzzing, mocks};
-mod utils;
 mod transaction_verify_pool;
 
 
