@@ -3,7 +3,6 @@ use crate::{
     transaction::{MempoolTransaction, TxState},
     ttl_cache::TtlCache,
 };
-use crate::logging::{LogEvent, TxnsLog};
 use crate::account_address::AccountAddress;
 use crate::mempool_status::{MempoolStatus, MempoolStatusCode};
 use crate::tx_pool_config::TxPoolConfig;

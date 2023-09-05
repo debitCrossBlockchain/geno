@@ -1,11 +1,3 @@
-/*
- * @Author: your name
- * @Date: 2022-03-04 07:46:52
- * @LastEditTime: 2022-03-10 11:14:13
- * @LastEditors: Please set LastEditors
- * @Description: 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
- * @FilePath: /chain-concordium/tx-pool/src/lib.rs
- */
 #![forbid(unsafe_code)]
 // Increase recursion limit to allow for use of select! macro.
 #![recursion_limit = "1024"]
@@ -71,7 +63,6 @@
 // };
 // #[cfg(any(test, feature = "fuzzing"))]
 // pub use tests::{fuzzing, mocks};
-mod logging;
 mod utils;
 mod transaction_verify_pool;
 

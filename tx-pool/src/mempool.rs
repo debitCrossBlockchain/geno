@@ -10,13 +10,10 @@ use crate::types::CommittedTransaction;
 use crate::CoreMempool;
 use crate::{
     // counters,
-    logging::{LogEntry, LogSchema, TxnsLog},
-    {
-        index::{PriorityIndex, TxnPointer},
-        transaction::{MempoolTransaction, TimelineState, TxState},
-        transaction_store::TransactionStore,
-        ttl_cache::TtlCache,
-    },
+    index::{PriorityIndex, TxnPointer},
+    transaction::{MempoolTransaction, TimelineState, TxState},
+    transaction_store::TransactionStore,
+    ttl_cache::TtlCache,
 };
 use network::PeerNetwork;
 use protobuf::{Message, RepeatedField};
