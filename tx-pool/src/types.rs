@@ -4,7 +4,6 @@
 //! Objects used by/related to shared mempool
 
 use crate::CoreMempool;
-use crate::account_address::AccountAddress;
 use crate::mempool_status::MempoolStatus;
 use crate::tx_pool_config::TxPoolConfig;
 use crate::tx_validator::{DiscardedVMStatus, TransactionValidation};

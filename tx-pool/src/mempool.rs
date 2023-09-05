@@ -3,7 +3,6 @@
 
 //! Mempool is used to track transactions which have been submitted but not yet
 //! agreed upon.
-use crate::account_address::AccountAddress;
 use crate::mempool_status::{MempoolStatus, MempoolStatusCode};
 use crate::tx_pool_config::TxPoolConfig;
 use crate::types::CommittedTransaction;

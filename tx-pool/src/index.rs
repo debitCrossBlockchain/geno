@@ -3,10 +3,6 @@
 
 /// This module provides various indexes used by Mempool.
 use crate::transaction::{MempoolTransaction, TimelineState};
-// use crate::{
-//     counters,
-// };
-use crate::account_address::AccountAddress;
 use itertools::Itertools;
 use rand::seq::SliceRandom;
 use std::{
@@ -129,7 +125,7 @@ impl TTLIndex {
     pub(crate) fn gc(&mut self, now: Duration) -> Vec<TTLOrderingKey> {
         let ttl_key = TTLOrderingKey {
             expiration_time: now,
-            address: AccountAddress::ZERO.to_string(),
+            address: String::from("000000000"),
             sequence_number: 0,
         };
 

@@ -9,7 +9,6 @@
 // Copyright (c) The  Core Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::account_address::AccountAddress;
 use parking_lot::RwLock;
 use protobuf::Message;
 use types::TransactionSignRaw;
