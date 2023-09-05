@@ -38,8 +38,3 @@ tracing = "0.1.29"
 [dev-dependencies]
 criterion = "0.3"
 actix-rt = "*"
-
-
-[[bench]]
-name = "txpool_benchmark"
-harness = false

@@ -1,14 +1,13 @@
 // Copyright (c) The  Core Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::shared_mempool::coordinator::{broadcast_transaction, coordinator, gc_coordinator};
-use crate::shared_mempool::temp_db::DbReader;
-use crate::shared_mempool::tx_pool_config::TxPoolConfig;
-use crate::shared_mempool::tx_validator::{TransactionValidation, TxValidator};
+use crate::coordinator::{broadcast_transaction, coordinator, gc_coordinator};
+use crate::tx_pool_config::TxPoolConfig;
+use crate::tx_validator::{TransactionValidation, TxValidator};
 use crate::TxPoolInstanceRef;
 use crate::{
-    core_mempool::CoreMempool,
-    shared_mempool::types::{
+    CoreMempool,
+    types::{
         MempoolBroadCastTxReceiver, MempoolClientReceiver, MempoolCommitNotificationReceiver,
         MempoolConsensusReceiver, SharedMempool, SharedMempoolNotification, SubmissionStatus,
     },
@@ -36,7 +35,6 @@ pub(crate) fn start_shared_mempool<V>(
     broadcast_tx_events: MempoolBroadCastTxReceiver,
     consensus_requests: MempoolConsensusReceiver,
     committed_events: MempoolCommitNotificationReceiver,
-    db: Arc<dyn DbReader>,
     validator: Arc<RwLock<V>>,
 ) where
     V: TransactionValidation + 'static,
@@ -54,7 +52,6 @@ pub(crate) fn start_shared_mempool<V>(
         mempool: mempool.clone(),
         config: config.clone(),
         // network_senders,
-        db,
         validator,
         // peer_manager,
         // subscribers,
@@ -82,7 +79,6 @@ pub(crate) fn start_shared_mempool<V>(
 
 pub fn bootstrap(
     config: &configure::TxPoolConfig,
-    db: Arc<dyn DbReader>,
     client_events: MempoolClientReceiver,
     broadcast_tx_events: MempoolBroadCastTxReceiver,
     consensus_requests: MempoolConsensusReceiver,
@@ -98,7 +94,7 @@ pub fn bootstrap(
     {
         mempool.write().reinit(config, network);
     }
-    let vm_validator = Arc::new(RwLock::new(TxValidator::new(Arc::clone(&db))));
+    let vm_validator = Arc::new(RwLock::new(TxValidator::new()));
     start_shared_mempool(
         runtime.handle(),
         config,
@@ -107,7 +103,6 @@ pub fn bootstrap(
         broadcast_tx_events,
         consensus_requests,
         committed_events,
-        db,
         vm_validator,
         // vec![],
     );

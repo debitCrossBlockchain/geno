@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /// This module provides various indexes used by Mempool.
-use crate::core_mempool::transaction::{MempoolTransaction, TimelineState};
+use crate::transaction::{MempoolTransaction, TimelineState};
 // use crate::{
 //     counters,
 // };
-use crate::shared_mempool::account_address::AccountAddress;
+use crate::account_address::AccountAddress;
 use itertools::Itertools;
 use rand::seq::SliceRandom;
 use std::{

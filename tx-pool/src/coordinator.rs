@@ -1,8 +1,7 @@
 //! Processes that are directly spawned by shared mempool runtime initialization
 
 use crate::{
-    core_mempool::{CoreMempool, TimelineState},
-    shared_mempool::{
+    {CoreMempool, TimelineState},
         mempool_status::MempoolStatus,
         tasks,
         tasks::{process_committed_transactions, process_consensus_request},
@@ -13,7 +12,6 @@ use crate::{
             SubmissionStatus, TransactionSummary,
         },
         TEST_TXPOOL_INCHANNEL_AND_SWPAN,
-    },
 };
 use anyhow::Result;
 use futures::future::{Future, FutureExt};

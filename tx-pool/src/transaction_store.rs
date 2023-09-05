@@ -1,12 +1,12 @@
-use crate::core_mempool::{
+use crate::{
     index::{AccountTransactions, ParkingLotIndex, PriorityIndex, PriorityQueueIter, TTLIndex},
     transaction::{MempoolTransaction, TxState},
     ttl_cache::TtlCache,
 };
 use crate::logging::{LogEvent, TxnsLog};
-use crate::shared_mempool::account_address::AccountAddress;
-use crate::shared_mempool::mempool_status::{MempoolStatus, MempoolStatusCode};
-use crate::shared_mempool::tx_pool_config::TxPoolConfig;
+use crate::account_address::AccountAddress;
+use crate::mempool_status::{MempoolStatus, MempoolStatusCode};
+use crate::tx_pool_config::TxPoolConfig;
 use protobuf::Message;
 use protos::common::ProtocolsMessageType;
 use types::TransactionSignRaw;

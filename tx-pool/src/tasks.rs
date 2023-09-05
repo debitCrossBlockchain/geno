@@ -4,16 +4,16 @@
 //! Tasks that are executed by coordinators (short-lived compared to coordinators)
 
 use super::types::{CommittedTransaction, MempoolCommitNotification};
-use crate::core_mempool::{CoreMempool, TimelineState, TxState, TxnPointer};
-use crate::shared_mempool::mempool_status::{MempoolStatus, MempoolStatusCode};
-use crate::shared_mempool::tx_validator::{
+use crate::{CoreMempool, TimelineState, TxState, TxnPointer};
+use crate::mempool_status::{MempoolStatus, MempoolStatusCode};
+use crate::tx_validator::{
     get_account_nonce_banace, DiscardedVMStatus, TransactionValidation,
 };
-use crate::shared_mempool::types::{
+use crate::types::{
     notify_subscribers, MempoolConsensusRequest, MempoolConsensusResponse, SharedMempool,
     SharedMempoolNotification, SubmissionStatusBundle, TransactionSummary,
 };
-use crate::shared_mempool::TEST_TXPOOL_INCHANNEL_AND_SWPAN;
+use crate::TEST_TXPOOL_INCHANNEL_AND_SWPAN;
 use anyhow::Result;
 use chrono::Local;
 use futures::task::Spawn;

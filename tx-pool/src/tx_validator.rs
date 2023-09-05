@@ -1,5 +1,4 @@
-use crate::shared_mempool::account_address::AccountAddress;
-use crate::shared_mempool::temp_db::DbReader;
+use crate::account_address::AccountAddress;
 use crate::transaction_verify_pool::*;
 use anyhow::{Error, Result};
 use base64::{decode, encode};
@@ -9,8 +8,7 @@ use msp::signing::sm2::{Sm2Context, Sm2PublicKey};
 use msp::signing::{create_context, create_public_key_by_bytes, Context};
 use msp::HashInstanceRef;
 use protobuf::Message;
-use types::{TransactionRaw,TransactionSignRaw};
-
+use types::{TransactionRaw, TransactionSignRaw};
 
 use serde::{de, ser, Deserialize, Serialize};
 use std::sync::Arc;
@@ -53,13 +51,11 @@ pub trait TransactionValidation: Send + Sync + Clone {
 }
 
 #[derive(Clone)]
-pub struct TxValidator {
-    db_reader: Arc<dyn DbReader>,
-}
+pub struct TxValidator {}
 
 impl TxValidator {
-    pub fn new(db_reader: Arc<dyn DbReader>) -> Self {
-        TxValidator { db_reader }
+    pub fn new() -> TxValidator {
+        TxValidator {}
     }
 }
 
@@ -68,9 +64,7 @@ impl TransactionValidation for TxValidator {
         let txn_sender = txn.signatures.clone();
         for signature in txn_sender {
             // if already verify in jsonrpc,skip this verify
-            if tx_verify_pool_exist(
-                txn.tx.hash(),
-            ) {
+            if tx_verify_pool_exist(txn.tx.hash()) {
                 continue;
             }
             let ctx = create_context(signature.get_encryption_type()).unwrap();
@@ -85,11 +79,7 @@ impl TransactionValidation for TxValidator {
                     0,
                 ));
             }
-            let result = ctx.verify(
-                signature.get_sign_data(),
-                txn.tx.hash(),
-                &*pub_key.unwrap(),
-            );
+            let result = ctx.verify(signature.get_sign_data(), txn.tx.hash(), &*pub_key.unwrap());
             if result.is_err() {
                 return Ok(VMValidatorResult::new(
                     Some(StatusCode::INVALID_SIGNATURE),
@@ -104,15 +94,10 @@ impl TransactionValidation for TxValidator {
             }
 
             // insert tx verify pool
-            tx_verify_pool_set(
-                txn.tx.hash(),
-            );
+            tx_verify_pool_set(txn.tx.hash());
         }
 
-        Ok(VMValidatorResult::new(
-            None,
-            txn.tx.gas_price(),
-        ))
+        Ok(VMValidatorResult::new(None, txn.tx.gas_price()))
     }
 }
 

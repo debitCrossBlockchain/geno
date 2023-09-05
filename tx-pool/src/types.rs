@@ -3,12 +3,11 @@
 
 //! Objects used by/related to shared mempool
 
-use crate::core_mempool::CoreMempool;
-use crate::shared_mempool::account_address::AccountAddress;
-use crate::shared_mempool::mempool_status::MempoolStatus;
-use crate::shared_mempool::temp_db::DbReader;
-use crate::shared_mempool::tx_pool_config::TxPoolConfig;
-use crate::shared_mempool::tx_validator::{DiscardedVMStatus, TransactionValidation};
+use crate::CoreMempool;
+use crate::account_address::AccountAddress;
+use crate::mempool_status::MempoolStatus;
+use crate::tx_pool_config::TxPoolConfig;
+use crate::tx_validator::{DiscardedVMStatus, TransactionValidation};
 use anyhow::Result;
 use futures::{
     channel::{mpsc, mpsc::UnboundedSender, oneshot},
@@ -29,7 +28,6 @@ where
     pub mempool: Arc<RwLock<CoreMempool>>,
     pub config: configure::TxPoolConfig,
     // pub network_senders: HashMap<NodeNetworkId, MempoolNetworkSender>,
-    pub db: Arc<dyn DbReader>,
     pub validator: Arc<RwLock<V>>,
     // pub peer_manager: Arc<PeerManager>,
     // pub subscribers: Vec<UnboundedSender<SharedMempoolNotification>>,
