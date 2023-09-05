@@ -20,8 +20,6 @@ use std::{convert::TryFrom, fmt};
 
 /// A `MempoolStatus` is represented as a required status code that is semantic coupled with an optional sub status and message.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-// #[cfg_attr(any(test, feature = "fuzzing"), derive(Arbitrary))]
-// #[cfg_attr(any(test, feature = "fuzzing"), proptest(no_params))]
 pub struct MempoolStatus {
     /// insertion status code
     pub code: MempoolStatusCode,

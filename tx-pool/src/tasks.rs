@@ -42,10 +42,6 @@ pub(crate) async fn process_client_transaction_submission<V>(
 ) where
     V: TransactionValidation,
 {
-    // {
-    //     counters::INSERT_PROCESS_TPS.write().count();
-    // }
-
     let statuses = process_incoming_transactions(&smp, vec![transaction], TxState::NotReady);
 
     if let Some(status) = statuses.get(0) {
@@ -90,8 +86,6 @@ where
         .par_iter()
         .map(|t| {
             get_account_nonce_banace(t.tx.sender()).map_err(|e| {
-                // error!(LogSchema::new(LogEntry::DBError).error(&e));
-                //counters::DB_ERROR.inc();
                 error!("TransactionValidation get account error");
                 e
             })
@@ -152,28 +146,17 @@ where
 
     // Track latency: VM validation
     let start_verify_sign = Instant::now();
-    // let vm_validation_timer = counters::PROCESS_TXN_BREAKDOWN_LATENCY
-    //     .with_label_values(&[counters::VM_VALIDATION_LABEL])
-    //     .start_timer();
     let validation_results = transactions
         .par_iter()
         .map(|t| smp.validator.read().validate_transaction(&t.0))
         .collect::<Vec<_>>();
-    // vm_validation_timer.stop_and_record();
-    let verify_sign_latency = start_verify_sign.elapsed();
-
     {
-        let start_add_txn = Instant::now();
-        // let insert_tx_timer = counters::PROCESS_TXN_BREAKDOWN_LATENCY
-        //     .with_label_values(&[counters::INSERT_TXS_LABEL])
-        //     .start_timer();
         let mut mempool = smp.mempool.write();
         for (idx, (mut transaction, db_sequence_number)) in transactions.into_iter().enumerate() {
             if let Ok(validation_result) = &validation_results[idx] {
                 match validation_result.status() {
                     None => {
-                        //let gas_amount = transaction.get_transaction().get_fee_limit() as u64;
-                        let gas_amount = 0;
+                        let gas_amount = transaction.tx.gas_limit();
                         let ranking_score = validation_result.score();
                         let mempool_status = mempool.add_txn(
                             transaction.clone(),
@@ -198,14 +181,6 @@ where
         }
 
         // insert_tx_timer.stop_and_record();
-        let add_txn_latency = start_add_txn.elapsed();
-        mempool.statistic(
-            tx_size as u64,
-            start.elapsed(),
-            storage_read_latency,
-            verify_sign_latency,
-            add_txn_latency,
-        );
     }
 
     statuses
@@ -246,10 +221,6 @@ pub(crate) async fn process_committed_transactions<V>(
         tx_size,
         start.elapsed().as_micros()
     );
-
-    // if block_timestamp_usecs > 0 {
-    //     pool.gc_by_expiration_time(Duration::from_micros(block_timestamp_usecs));
-    // }
 }
 
 pub(crate) fn process_consensus_request<V: TransactionValidation>(

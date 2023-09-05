@@ -39,22 +39,10 @@ pub(crate) fn start_shared_mempool<V>(
 ) where
     V: TransactionValidation + 'static,
 {
-    // let peer_manager = Arc::new(PeerManager::new(config.base.role, config.mempool.clone()));
-    //
-    // let mut all_network_events = vec![];
-    // let mut network_senders = HashMap::new();
-    // for (network_id, network_sender, network_events) in mempool_network_handles.into_iter() {
-    //     all_network_events.push((network_id.clone(), network_events));
-    //     network_senders.insert(network_id, network_sender);
-    // }
-
     let smp = SharedMempool {
         mempool: mempool.clone(),
-        config: config.clone(),
-        // network_senders,
+        config: config.clone(), 
         validator,
-        // peer_manager,
-        // subscribers,
     };
 
     executor.spawn(coordinator(

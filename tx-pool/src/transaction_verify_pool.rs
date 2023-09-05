@@ -1,7 +1,6 @@
 
  use once_cell::sync::Lazy;
  use parking_lot::RwLock;
-//  use protos::ledger::TransactionSign;
  use std::collections::HashSet;
 
  lazy_static! {
@@ -45,10 +44,4 @@
      TxVerifyPoolRef.write().remove(hash);
  }
  
-//  pub fn tx_verify_pool_banch_del(txs: &[TransactionSign]) {
-//      let mut pool = TxVerifyPoolRef.write();
-//      for t in txs {
-//          pool.remove(t.get_trigger().get_transaction().get_hash());
-//      }
-//  }
  

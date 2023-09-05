@@ -88,19 +88,6 @@ impl Ord for OrderedQueueKey {
             Ordering::Equal => {}
             ordering => return ordering,
         }
-        // match self.expiration_time.cmp(&other.expiration_time).reverse() {
-        //     Ordering::Equal => {}
-        //     ordering =>
-        //     //return ordering,
-        //     {
-        //         match self.address.cmp(&other.address) {
-        //             Ordering::Equal => {
-        //                 return self.sequence_number.cmp(&other.sequence_number).reverse();
-        //             }
-        //             orderings => return ordering,
-        //         }
-        //     }
-        // }
         match self.address.cmp(&other.address) {
             Ordering::Equal => {}
             ordering => return ordering,

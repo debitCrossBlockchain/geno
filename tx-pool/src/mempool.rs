@@ -3,20 +3,20 @@
 
 //! Mempool is used to track transactions which have been submitted but not yet
 //! agreed upon.
-use crate::CoreMempool;
 use crate::account_address::AccountAddress;
 use crate::mempool_status::{MempoolStatus, MempoolStatusCode};
 use crate::tx_pool_config::TxPoolConfig;
 use crate::types::CommittedTransaction;
+use crate::CoreMempool;
 use crate::{
+    // counters,
+    logging::{LogEntry, LogSchema, TxnsLog},
     {
         index::{PriorityIndex, TxnPointer},
         transaction::{MempoolTransaction, TimelineState, TxState},
         transaction_store::TransactionStore,
         ttl_cache::TtlCache,
     },
-    // counters,
-    logging::{LogEntry, LogSchema, TxnsLog},
 };
 use network::PeerNetwork;
 use protobuf::{Message, RepeatedField};
@@ -92,7 +92,10 @@ impl Mempool {
         return self.transactions.get_by_hash(hash);
     }
 
-    pub fn get_bench_by_hash(&self, hash_list: &[Vec<u8>]) -> (Vec<TransactionSignRaw>, Vec<Vec<u8>>) {
+    pub fn get_bench_by_hash(
+        &self,
+        hash_list: &[Vec<u8>],
+    ) -> (Vec<TransactionSignRaw>, Vec<Vec<u8>>) {
         let mut lack_txs = Vec::new();
         let mut txs = Vec::new();
         for hash in hash_list.iter() {
@@ -112,30 +115,19 @@ impl Mempool {
         sequence_number: u64,
         is_rejected: bool,
     ) {
-        // self.metrics_cache
-        //     .remove(&(sender.to_string(), sequence_number));
-
         let current_seq_number = self
             .sequence_number_cache
             .remove(&sender.to_string())
             .unwrap_or_default();
 
-        // if is_rejected {
-        //     if sequence_number >= current_seq_number {
-        //         self.transactions
-        //             .reject_transaction(&sender.to_string(), sequence_number);
-        //     }
-        // } else
-        {
-            // update current cached sequence number for account
-            let new_seq_number = max(current_seq_number, sequence_number);
-            self.sequence_number_cache
-                .insert(sender.to_string(), new_seq_number);
+        // update current cached sequence number for account
+        let new_seq_number = max(current_seq_number, sequence_number);
+        self.sequence_number_cache
+            .insert(sender.to_string(), new_seq_number);
 
-            let new_seq_number = sequence_number;
-            self.transactions
-                .commit_transaction(sender, new_seq_number + 1);
-        }
+        let new_seq_number = sequence_number;
+        self.transactions
+            .commit_transaction(sender, new_seq_number + 1);
     }
 
     /// Used to add a transaction to the Mempool.
@@ -167,12 +159,8 @@ impl Mempool {
 
         let expiration_time = duration_since_epoch() + self.system_transaction_timeout;
 
-        let txn_info = MempoolTransaction::new(
-            txn.clone(),
-            expiration_time,
-            tx_state,
-            db_sequence_number,
-        );
+        let txn_info =
+            MempoolTransaction::new(txn.clone(), expiration_time, tx_state, db_sequence_number);
 
         let status = self.transactions.insert(txn_info);
 
@@ -291,23 +279,6 @@ impl Mempool {
             }
         }
 
-        // let t3 = chrono::Local::now();
-        // info!(
-        //     "[tx-pool] txpool-trace get_block txs({}) total use({:?})micros ({:?}) + ({:?}) iter_queue({}) {} {}",
-        //     block.len(),
-        //     (t3 - t1).num_microseconds(),
-        //     (t2 - t1).num_microseconds(),
-        //     (t3 - t2).num_microseconds(),
-        //     iter_queue_size,
-        //     counters::MAINLOOP_TPS.read().summary(),
-        //     counters::INSERT_PROCESS_TPS.read().summary()
-        // );
-        // {
-        //     counters::MAINLOOP_TPS.write().start();
-        // }
-        // {
-        //     counters::INSERT_PROCESS_TPS.write().start();
-        // }
         block
     }
 
@@ -357,24 +328,6 @@ impl Mempool {
             }
         }
 
-        // let t3 = chrono::Local::now();
-        // info!(
-        //     "[tx-pool] txpool-trace get_block_txhashs ledger_seq({}) txs({}) total use({:?})micros ({:?}) + ({:?}) total {} iter_queue({}) {} {}",
-        //     ledger_seq,block.len(),
-        //     (t3 - t1).num_microseconds(),
-        //     (t2 - t1).num_microseconds(),
-        //     (t3 - t2).num_microseconds(),
-        //     self.transactions.count(),
-        //     iter_queue_size,
-        //     counters::MAINLOOP_TPS.read().summary(),
-        //     counters::INSERT_PROCESS_TPS.read().summary()
-        // );
-        // {
-        //     counters::MAINLOOP_TPS.write().start();
-        // }
-        // {
-        //     counters::INSERT_PROCESS_TPS.write().start();
-        // }
         block
     }
 
@@ -425,21 +378,6 @@ impl Mempool {
         self.read_account_duration += read_account_duration;
         self.verify_duration += verify_duration;
         self.add_txn_duration += add_txn_duration;
-        // if self.count >= 10000 {
-        //     info!(
-        //         "[tx-pool] txpool-trace statistic insert count {} avg insert {} micros({}-{}-{})",
-        //         self.count,
-        //         self.duration.as_micros() / (self.count as u128),
-        //         self.read_account_duration.as_micros() / (self.count as u128),
-        //         self.verify_duration.as_micros() / (self.count as u128),
-        //         self.add_txn_duration.as_micros() / (self.count as u128)
-        //     );
-        //     self.count = 0;
-        //     self.duration = Duration::new(0, 0);
-        //     self.read_account_duration = Duration::new(0, 0);
-        //     self.verify_duration = Duration::new(0, 0);
-        //     self.add_txn_duration = Duration::new(0, 0);
-        // }
     }
 
     pub(crate) fn display_statistic(&self) -> String {

@@ -116,15 +116,12 @@ pub(crate) async fn coordinator<V>(
     let bounded_executor = BoundedExecutor::new(workers_available, executor.clone());
 
     loop {
-        // let _timer = counters::MAIN_LOOP.start_timer();
         ::futures::select! {
             (mut transaction, callback) = client_events.select_next_some() => {
-                // {counters::MAINLOOP_TPS.write().count();}
                 handle_client_event(&mut smp, &bounded_executor, transaction, callback).await;
             },
 
             transactions = broadcast_tx_events.select_next_some() => {
-                // {counters::MAINLOOP_TPS.write().count();}
                 handle_broadcast_event(&mut smp, &bounded_executor, transactions).await;
             },
 
@@ -166,17 +163,6 @@ async fn handle_broadcast_event<V>(
 ) where
     V: TransactionValidation,
 {
-    // This timer measures how long it took for the bounded executor to *schedule* the
-    // task.
-    // let _timer = counters::task_spawn_latency_timer(
-    //     counters::PEER_BROADCAST_EVENT_LABEL,
-    //     counters::SPAWN_LABEL,
-    // );
-    // This timer measures how long it took for the task to go from scheduled to started.
-    // let task_start_timer = counters::task_spawn_latency_timer(
-    //     counters::PEER_BROADCAST_EVENT_LABEL,
-    //     counters::START_LABEL,
-    // );
     bounded_executor
         .spawn(tasks::process_transaction_broadcast(
             smp.clone(),
@@ -190,10 +176,7 @@ async fn handle_broadcast_event<V>(
 pub(crate) async fn gc_coordinator(mempool: Arc<RwLock<CoreMempool>>, gc_interval_ms: u64) {
     let mut interval = IntervalStream::new(interval(Duration::from_millis(gc_interval_ms)));
     while let Some(_interval) = interval.next().await {
-        let start_time = Instant::now();
         mempool.write().gc();
-        let latency = start_time.elapsed();
-        // counters::mempool_service_latency(counters::GC_TXS_LABEL, latency);
     }
 }
 
@@ -207,9 +190,6 @@ pub(crate) async fn handle_commit_notification<V>(
     V: TransactionValidation,
 {
     // Process and time committed user transactions.
-    let start_time = Instant::now();
-    //counters::mempool_service_transactions(counters::COMMITTED_TXS_LABEL, msg.count as usize);
-
     bounded_executor
         .spawn(tasks::process_committed_transactions(
             smp.clone(),
@@ -218,9 +198,6 @@ pub(crate) async fn handle_commit_notification<V>(
             false,
         ))
         .await;
-
-    let latency = start_time.elapsed();
-    // counters::mempool_service_latency(counters::COMMITTED_TXS_LABEL, latency);
 }
 
 /// broadcast transaction
@@ -232,9 +209,6 @@ pub(crate) async fn broadcast_transaction(
         broadcast_transaction_interval_ms,
     )));
     while let Some(_interval) = interval.next().await {
-        let start_time = Instant::now();
         mempool.write().broadcast_transaction();
-        let latency = start_time.elapsed();
-        // counters::mempool_service_latency(counters::BROADCAST_TXS_LABEL, latency);
     }
 }
