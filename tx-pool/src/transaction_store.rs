@@ -195,12 +195,9 @@ impl TransactionStore {
 
     pub(crate) fn reject_transaction(&mut self, account: &String, _sequence_number: u64) {
         if let Some(txns) = self.transactions.remove(account) {
-            // let mut txns_log = TxnsLog::new();
             for transaction in txns.values() {
-                //txns_log.add(transaction.get_sender(), transaction.get_sequence_number());
                 self.index_remove(transaction);
             }
-            // debug!(LogSchema::new(LogEntry::CleanRejectedTxn).txns(txns_log));
         }
     }
 
