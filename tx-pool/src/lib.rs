@@ -63,7 +63,7 @@
 // };
 // #[cfg(any(test, feature = "fuzzing"))]
 // pub use tests::{fuzzing, mocks};
-mod transaction_verify_pool;
+mod tx_verify_pool;
 
 
 mod index;
