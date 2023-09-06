@@ -11,5 +11,6 @@ pub mod tbft_proof;
 pub mod timer;
 pub mod timer_manager;
 pub mod timing;
+pub mod verify_sign;
 pub use logger::LogUtil;
 pub use protos::ledger::TransactionSign;
