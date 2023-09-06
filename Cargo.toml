@@ -22,7 +22,7 @@ members = [
     "storage/ledger-store",
     "storage/state-store",
     "jsonrpc",
-    "keepup",
+    "catchup",
 ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -34,7 +34,7 @@ network = { path = "./network", version = "0.1.0" }
 msp = { path = "./msp", version = "0.1.0" }
 utils = { path = "./utils", version = "0.1.0" }
 state = { path = "./state", version = "0.1.0" }
-keepup = { path = "./keepup", version = "0.1.0" }
+catchup = { path = "./catchup", version = "0.1.0" }
 executor = { path = "./executor", version = "0.1.0" }
 
 

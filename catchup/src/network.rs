@@ -8,17 +8,17 @@ use protos::common::ProtocolsMessage;
 
 
 
-pub trait SyncNetworkInterace{
+pub trait CatchupNetworkInterace{
     fn select_peers(&self)->Option<HashSet<Endpoint>>;
     fn send_msg(&self, id:Endpoint, msg:ProtocolsMessage)->anyhow::Result<()>;
     fn broadcast_msg(&self, msg: ProtocolsMessage)->anyhow::Result<()>;
 } 
 
-pub struct SyncNetwork{
+pub struct CatchupNetwork{
     inner: PeerNetwork
 }
 
-impl SyncNetwork{
+impl CatchupNetwork{
     pub fn new(network: PeerNetwork)->Self{
         Self { inner: network }
     }
@@ -36,7 +36,7 @@ impl SyncNetwork{
     }
 }
 
-impl SyncNetworkInterace for SyncNetwork{
+impl CatchupNetworkInterace for CatchupNetwork{
     fn select_peers(&self)->Option<HashSet<Endpoint>>{
         let ps = self.peers();
         if ps.is_empty(){

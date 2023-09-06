@@ -8,20 +8,20 @@ pub enum ClientNotification{
     GetTransaction(),
 }
 
-pub enum SyncNotification{
-    BlockSyncRequest(),
-    BlockSyncResponse(),
-    HeaderSyncRequest(),
-    HeaderSyncResponse(),
+pub enum CatchupNotification{
+    BlockCatchupRequest(),
+    BlockCatchupResponse(),
+    HeaderCatchupRequest(),
+    HeaderCatchupResponse(),
 }
 
 pub enum TimerNotification{
-    BlockSync,
+    BlockCatchup,
 }
 
 pub type  ClientNotificationReceiver = Receiver<ClientNotification>;
-//pub type SyncNotificationReceiver = Receiver<SyncNotification>; //
-pub type SyncNotificationReceiver = Receiver<(Endpoint, ProtocolsMessage)>; 
+//pub type CatchupNotificationReceiver = Receiver<CatchupNotification>; //
+pub type CatchupNotificationReceiver = Receiver<(Endpoint, ProtocolsMessage)>; 
 //pub type TimerNotificationReceiver = Receiver<TimerNotification>;
 pub type TimerNotificationReceiver = Receiver<TimterEventParam>;
 

@@ -1,9 +1,9 @@
 
 
-use crate::network::SyncNetworkInterace;
-use crate::notification::{ClientNotificationReceiver, SyncNotificationReceiver, TimerNotificationReceiver, ClientNotification};
+use crate::network::CatchupNetworkInterace;
+use crate::notification::{ClientNotificationReceiver, CatchupNotificationReceiver, TimerNotificationReceiver, ClientNotification};
 use crate::storage_executor::StorageExecutorInterface;
-use crate::sync_status::{SyncStatus, Peers};
+use crate::catchup_status::{CatchupStatus, Peers};
 
 
 use protos::{
@@ -23,26 +23,26 @@ use protobuf::{RepeatedField, Message};
 
 
 
-pub struct Syncer<S, N>{
-    status: SyncStatus,
+pub struct Catchuper<S, N>{
+    status: CatchupStatus,
     peers: Peers,
     executor: S,
     network: N,
     client_notify: ClientNotificationReceiver,
-    sync_notify: SyncNotificationReceiver, 
+    catchup_notify: CatchupNotificationReceiver, 
     timer_notify: TimerNotificationReceiver, 
 }
 
-impl<S, N> Syncer <S, N> 
+impl<S, N> Catchuper <S, N> 
     where
         S:StorageExecutorInterface+Send + 'static,
-        N:SyncNetworkInterace+Send + 'static
+        N:CatchupNetworkInterace+Send + 'static
     {
     pub fn create_and_start(
         network: N, 
         executor: S, 
         client_notify: ClientNotificationReceiver, 
-        sync_notify: SyncNotificationReceiver){
+        Catchup_notify: CatchupNotificationReceiver){
 
         let (sender, timer_notify) = bounded(1024);
         let _id: i64 = TimerManager::instance().new_repeating_timer(
@@ -51,13 +51,13 @@ impl<S, N> Syncer <S, N>
             TimerEventType::LedgerSync,
             None,
         );
-        let mut sync = Syncer::new(network, executor, client_notify, sync_notify, timer_notify);
+        let mut catchup = Catchuper::new(network, executor, client_notify, Catchup_notify, timer_notify);
         
         //get last blockheader
 
 
         let _ = std::thread::spawn(move || loop {
-            sync.start();
+            catchup.start();
         });
 
     }
@@ -66,24 +66,24 @@ impl<S, N> Syncer <S, N>
         network: N, 
         executor: S, 
         client_notify: ClientNotificationReceiver, 
-        sync_notify: SyncNotificationReceiver, 
+        catchup_notify: CatchupNotificationReceiver, 
         timer_notify: TimerNotificationReceiver) -> Self{
         
         Self{
-            status:SyncStatus::default(),
+            status:CatchupStatus::default(),
             peers: Peers::default(),
             executor,
             network,
             client_notify,
-            sync_notify,
+            catchup_notify,
             timer_notify,
         }
     }
  
     pub fn start(&mut self){
         select! {
-            recv(self.sync_notify) -> msg =>{
-                self.handle_sync_notification(msg)
+            recv(self.catchup_notify) -> msg =>{
+                self.handle_catchup_notification(msg)
             }
             recv(self.client_notify) -> msg =>{
                 self.handle_client_notification(msg)
@@ -94,17 +94,17 @@ impl<S, N> Syncer <S, N>
         }
     }
 
-    fn handle_sync_notification(&mut self, msg: Result<(Endpoint, ProtocolsMessage), RecvError>){
+    fn handle_catchup_notification(&mut self, msg: Result<(Endpoint, ProtocolsMessage), RecvError>){
         match msg {
             Ok((peer_endpoint,proto_message))=>{
                 match proto_message.get_msg_type() {
                     ProtocolsMessageType::SYNCCHAIN => {
                         match proto_message.get_action() {
                             ProtocolsActionMessageType::BROADCAST => {
-                                self.handle_sync_chain_broadcast(peer_endpoint, &proto_message);
+                                self.handle_catchup_chain_broadcast(peer_endpoint, &proto_message);
                             },
                             ProtocolsActionMessageType::RESPONSE => {
-                                self.handle_sync_chain_response(peer_endpoint, &proto_message);
+                                self.handle_catchup_chain_response(peer_endpoint, &proto_message);
                             },
                             _=>(),
                         }
@@ -113,10 +113,10 @@ impl<S, N> Syncer <S, N>
                     ProtocolsMessageType::SYNCBLOCK => {
                         match proto_message.get_action() {
                             ProtocolsActionMessageType::REQUEST => {
-                                self.handle_sync_block_reqest(peer_endpoint, &proto_message);
+                                self.handle_catchup_block_reqest(peer_endpoint, &proto_message);
                             },
                             ProtocolsActionMessageType::RESPONSE => {
-                                self.handle_sync_block_response(peer_endpoint, &proto_message);
+                                self.handle_catchup_block_response(peer_endpoint, &proto_message);
                             },
                             _=>(),
                         }
@@ -142,9 +142,9 @@ impl<S, N> Syncer <S, N>
             Ok(param)=>{
                 match param.event_type{
                     TimerEventType::LedgerSync =>{
-                        self.sync_chain();
-                        if !self.status.is_syncing(){
-                            self.sync_block(None);
+                        self.catchup_chain();
+                        if !self.status.is_catchuping(){
+                            self.catchup_block(None);
                         }
                     }
                     _=>{}
@@ -155,7 +155,7 @@ impl<S, N> Syncer <S, N>
         }
     }
 
-    pub fn sync_block(&mut self, peer_id: Option<Endpoint>,) {
+    pub fn catchup_block(&mut self, peer_id: Option<Endpoint>,) {
 
         let active_peer = if peer_id.is_none(){
             let active_peer = self.peers.select_peer();
@@ -186,7 +186,7 @@ impl<S, N> Syncer <S, N>
         let _ = self.network.send_msg(active_peer, message);
     }
 
-    fn handle_sync_block_reqest(
+    fn handle_catchup_block_reqest(
         &self,
         peer_id: Endpoint,
         protocol_msg: &ProtocolsMessage,
@@ -249,7 +249,7 @@ impl<S, N> Syncer <S, N>
         }
     }
     
-    fn handle_sync_block_response(&mut self, peer_id: Endpoint, protocol_msg: &ProtocolsMessage) {
+    fn handle_catchup_block_response(&mut self, peer_id: Endpoint, protocol_msg: &ProtocolsMessage) {
 
         
         let block_rep :SyncBlockResponse = match ProtocolParser::deserialize(protocol_msg.get_data()) {
@@ -257,20 +257,20 @@ impl<S, N> Syncer <S, N>
             Err(e) => return,
         };
     
-        self.status.sync_ing(0);
+        self.status.catchup_ing(0);
 
         if block_rep.get_chain_id() != self_chain_id() {
-            self.status.sync_prepare();
+            self.status.catchup_prepare();
             return;
         }
 
         let last_h = match self.executor.get_block_height(){
             Ok(Some(v)) => v,
             Ok(None) => {
-                self.status.sync_prepare();
+                self.status.catchup_prepare();
                 return},
             Err(e) => {
-                self.status.sync_prepare();
+                self.status.catchup_prepare();
                 return},
         };
     
@@ -296,14 +296,14 @@ impl<S, N> Syncer <S, N>
         }
 
         if !block_rep.get_finish() {
-            self.sync_block(Some(peer_id));
+            self.catchup_block(Some(peer_id));
         }else{
-            self.status.sync_done();
+            self.status.catchup_done();
         }
 
     }
     
-    pub fn sync_chain(&mut self) {
+    pub fn catchup_chain(&mut self) {
         let active_peers = self.network.select_peers();
         if active_peers.is_none() {
             return;
@@ -328,7 +328,7 @@ impl<S, N> Syncer <S, N>
         let _ = self.network.broadcast_msg(message);
     }
 
-    fn handle_sync_chain_broadcast(
+    fn handle_catchup_chain_broadcast(
         &mut self,
         peer_id: Endpoint,
         protocol_msg: &ProtocolsMessage,
@@ -365,7 +365,7 @@ impl<S, N> Syncer <S, N>
 
     }
 
-    fn handle_sync_chain_response(
+    fn handle_catchup_chain_response(
         &mut self,
         peer_id: Endpoint,
         protocol_msg: &ProtocolsMessage,

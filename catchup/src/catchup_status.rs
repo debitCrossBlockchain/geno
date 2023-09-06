@@ -9,25 +9,25 @@ use parking_lot::RwLock;
 
 
 
-pub enum SyncState{
+pub enum CatchupState{
     Prepare,
-    Synchronizing{
+    Catchuphronized,
+    Catchuphronizing{
         block_id: u64,
     },
-    Synchronized,
 }
 
-impl SyncState {
+impl CatchupState {
     pub fn is_prepare(&self) -> bool {
-        matches!(self, SyncState::Prepare)
+        matches!(self, CatchupState::Prepare)
     }
 
-    pub fn is_syncing(&self) -> bool {
-        matches!(self, SyncState::Synchronizing { .. })
+    pub fn is_Catchuping(&self) -> bool {
+        matches!(self, CatchupState::Catchuphronizing { .. })
     }
 
-    pub fn is_synced(&self) -> bool {
-        matches!(self, SyncState::Synchronized)
+    pub fn is_Catchuped(&self) -> bool {
+        matches!(self, CatchupState::Catchuphronized)
     }
 }
 
@@ -38,32 +38,32 @@ pub struct ChainStatus{
 }
 
 
-pub struct SyncStatus {
+pub struct CatchupStatus {
     pub status: LedgerHeader,
-    pub state: SyncState,
+    pub state: CatchupState,
 }
 
-impl Default for SyncStatus{
+impl Default for CatchupStatus{
     fn default() -> Self {
-        Self { status: LedgerHeader::default(), state: SyncState::Prepare }
+        Self { status: LedgerHeader::default(), state: CatchupState::Prepare }
     }
 }
 
-impl SyncStatus{
+impl CatchupStatus{
     pub fn new(status: LedgerHeader) -> Self{
-        Self { status, state: SyncState::Prepare }
+        Self { status, state: CatchupState::Prepare }
     }
 
-    pub fn sync_done(&mut self){
-        self.state = SyncState::Synchronized;
+    pub fn catchup_done(&mut self){
+        self.state = CatchupState::Catchuphronized;
     }
 
-    pub fn sync_prepare(&mut self){
-        self.state = SyncState::Prepare;
+    pub fn catchup_prepare(&mut self){
+        self.state = CatchupState::Prepare;
     }
 
-    pub fn sync_ing(&mut self, block_id:u64){
-        self.state = SyncState::Synchronizing { block_id };
+    pub fn catchup_ing(&mut self, block_id:u64){
+        self.state = CatchupState::Catchuphronizing { block_id };
     }
 
     pub fn get_height(&self)->u64{
@@ -78,12 +78,12 @@ impl SyncStatus{
         self.state.is_prepare()
     }
 
-    pub fn is_syncing(&self) -> bool {
-        self.state.is_syncing()
+    pub fn is_catchuping(&self) -> bool {
+        self.state.is_Catchuping()
     }
 
-    pub fn is_synced(&self) -> bool {
-        self.state.is_synced()
+    pub fn is_catchuped(&self) -> bool {
+        self.state.is_Catchuped()
     }
 }
 
