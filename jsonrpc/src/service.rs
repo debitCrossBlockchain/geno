@@ -1,6 +1,6 @@
 use utils::general::self_chain_id;
 
-use crate::errors::JsonRpcError;
+use crate::{errors::JsonRpcError, ws_connections::WsConnections};
 
 #[derive(Clone)]
 pub(crate) struct JsonRpcService {

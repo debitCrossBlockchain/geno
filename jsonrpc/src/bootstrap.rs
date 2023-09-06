@@ -4,22 +4,31 @@ use crate::{
     request::JsonRpcRequest,
     response::{JsonRpcResponse, HEADER_CHAIN_ID},
     service::JsonRpcService,
+    ws_connections::{process_publish_event, PublishEvent, WsConnections},
+    ws_handler::ws_handler,
 };
 use anyhow::Result;
 use futures::future::{join_all, Either};
-use std::sync::Arc;
-use tokio::runtime::{Builder, Runtime};
+use std::{net::SocketAddr, sync::Arc};
+use tokio::{
+    runtime::{Builder, Runtime},
+    sync::mpsc,
+};
 use warp::{http::header, reject::Reject, Filter, Reply};
 
-pub fn start_jsonrpc_service(config: &configure::JsonRpcConfig) -> Runtime {
+pub fn start_jsonrpc_service(
+    config: &configure::JsonRpcConfig,
+) -> (Runtime, mpsc::UnboundedSender<PublishEvent>) {
     let runtime = Builder::new_multi_thread()
         .thread_name("json-rpc")
         .enable_all()
         .build()
         .expect("[json-rpc] failed to create runtime");
 
+    let collections = WsConnections::new(utils::general::self_chain_id());
+    let collections_clone = collections.clone();
+    let (event_sender, event_receiver) = mpsc::unbounded_channel::<PublishEvent>();
     let registry = Arc::new(build_registry());
-
     let service = JsonRpcService::new(config);
 
     let base_route = warp::any()
@@ -31,7 +40,7 @@ pub fn start_jsonrpc_service(config: &configure::JsonRpcConfig) -> Runtime {
         .and(warp::body::json())
         .and(warp::any().map(move || service.clone()))
         .and(warp::any().map(move || Arc::clone(&registry)))
-        .and_then(handle)
+        .and_then(http_handler)
         .with(
             warp::cors()
                 .allow_any_origin()
@@ -43,22 +52,46 @@ pub fn start_jsonrpc_service(config: &configure::JsonRpcConfig) -> Runtime {
         .and(warp::path::end())
         .and(base_route);
 
+    let ws_route = warp::path("ws")
+        .and(warp::ws())
+        .and(warp::addr::remote())
+        .and(warp::path::param())
+        .and(warp::any().map(move || collections.clone()))
+        .map(
+            |ws: warp::ws::Ws,
+             remote: Option<SocketAddr>,
+             api_key: String,
+             collections: WsConnections| {
+                ws.on_upgrade(move |socket| ws_handler(socket, remote, api_key, collections))
+            },
+        );
+
+    let health_route = warp::path!("-" / "healthy")
+        .and(warp::path::end())
+        .and_then(health_handler);
+
+    let routes = health_route.or(route_v1.or(ws_route));
+
     let _guard = runtime.enter();
     let server = match &config.tls_cert_path {
-        None => Either::Left(warp::serve(route_v1).bind(config.address.clone())),
+        None => Either::Left(warp::serve(routes).bind(config.address.clone())),
         Some(cert_path) => Either::Right(
-            warp::serve(route_v1)
+            warp::serve(routes)
                 .tls()
                 .cert_path(cert_path)
                 .key_path(config.tls_key_path.as_ref().unwrap())
                 .bind(config.address.clone()),
         ),
     };
-    runtime.handle().spawn(server);
+
     runtime
+        .handle()
+        .spawn(process_publish_event(collections_clone, event_receiver));
+    runtime.handle().spawn(server);
+    (runtime, event_sender)
 }
 
-async fn handle(
+async fn http_handler(
     data: serde_json::Value,
     service: JsonRpcService,
     registry: Arc<RpcRegistry>,
@@ -69,7 +102,7 @@ async fn handle(
             Ok(_) => {
                 let futures = requests
                     .into_iter()
-                    .map(|req| request_handle(req, service.clone(), Arc::clone(&registry)));
+                    .map(|req| request_handler(req, service.clone(), Arc::clone(&registry)));
                 let responses = join_all(futures).await;
                 warp::reply::json(&responses)
             }
@@ -80,7 +113,7 @@ async fn handle(
             }
         }
     } else {
-        let resp = request_handle(data, service, registry).await;
+        let resp = request_handler(data, service, registry).await;
         warp::reply::json(&resp)
     });
 
@@ -93,7 +126,7 @@ async fn handle(
     Ok(http_response)
 }
 
-async fn request_handle(
+async fn request_handler(
     value: serde_json::Value,
     service: JsonRpcService,
     registry: Arc<RpcRegistry>,
@@ -111,6 +144,7 @@ async fn request_handle(
         response.error = Some(err);
         return response;
     }
+    response.id = Some(serde_json::Value::Number(request.id.into()));
 
     match registry.get(&request.method) {
         Some(handler) => match handler(service, request).await {
@@ -137,4 +171,8 @@ fn check_jsonrpc_format(request: &JsonRpcRequest) -> Result<(), JsonRpcError> {
         return Err(JsonRpcError::invalid_jsonrpc_format());
     }
     Ok(())
+}
+
+async fn health_handler() -> Result<Box<dyn warp::Reply>, warp::Rejection> {
+    Ok(Box::new("ok"))
 }

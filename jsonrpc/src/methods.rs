@@ -1,4 +1,4 @@
-use crate::{request::JsonRpcRequest, service::JsonRpcService};
+use crate::{errors::JsonRpcError, request::JsonRpcRequest, service::JsonRpcService};
 use anyhow::{ensure, format_err, Error, Result};
 use core::future::Future;
 use serde_json::{Map, Value};

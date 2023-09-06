@@ -85,4 +85,20 @@ impl JsonRpcError {
             data: None,
         }
     }
+
+    pub fn invalid_param(name: &str, err_msg: &str) -> Self {
+        Self {
+            code: RpcErrorCode::InvalidParams as i16,
+            message: format!("Invalid param, {}: {}", name, err_msg),
+            data: None,
+        }
+    }
+
+    pub fn invalid_params_size(msg: String) -> Self {
+        Self {
+            code: RpcErrorCode::InvalidParams as i16,
+            message: format!("Invalid params size: {}", msg),
+            data: None,
+        }
+    }
 }
