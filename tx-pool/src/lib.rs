@@ -72,12 +72,10 @@ mod transaction;
 mod transaction_store;
 mod ttl_cache;
 
-
-mod runtime;
 pub mod types;
-pub use runtime::bootstrap;
+pub use tasks::bootstrap;
 #[cfg(any(test, feature = "fuzzing"))]
-pub(crate) use runtime::start_shared_mempool;
+pub(crate) use tasks::start_shared_mempool;
 mod coordinator;
 pub mod mempool_status;
 mod message_queues;
