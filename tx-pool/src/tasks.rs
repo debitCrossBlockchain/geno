@@ -3,7 +3,7 @@
 
 //! Tasks that are executed by coordinators (short-lived compared to coordinators)
 
-use super::types::{CommittedTransaction, MempoolCommitNotification};
+use crate::coordinator::{broadcast_transaction, coordinator, gc_coordinator};
 use crate::{CoreMempool, TimelineState, TxState, TxnPointer};
 use crate::mempool_status::{MempoolStatus, MempoolStatusCode};
 use crate::tx_validator::{
@@ -11,7 +11,8 @@ use crate::tx_validator::{
 };
 use crate::types::{
     notify_subscribers, MempoolConsensusRequest, MempoolConsensusResponse, SharedMempool,
-    SharedMempoolNotification, SubmissionStatusBundle, TransactionSummary,
+    SharedMempoolNotification, SubmissionStatusBundle, TransactionSummary,MempoolConsensusReceiver,MempoolBroadCastTxReceiver,
+    MempoolCommitNotificationReceiver,MempoolClientReceiver,MempoolCommitNotification
 };
 use crate::TEST_TXPOOL_INCHANNEL_AND_SWPAN;
 use anyhow::Result;
@@ -29,9 +30,12 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::runtime::Handle;
+use crate::tx_validator::TxValidator;
 use tracing::*;
 use utils::timing::Timestamp;
+use tokio::runtime::{Builder, Handle, Runtime};
+use crate::TxPoolInstanceRef;
+use network::PeerNetwork;
 pub type SubmissionStatus = (MempoolStatus, Option<DiscardedVMStatus>);
 
 /// Processes transactions directly submitted by client.
@@ -263,4 +267,80 @@ pub(crate) fn process_consensus_request<V: TransactionValidation>(
     if callback.send(Ok(resp)).is_err() {
         error!("process_consensus_request callback send error");
     }
+}
+
+
+/// Bootstrap of SharedMempool.
+/// Creates a separate Tokio Runtime that runs the following routines:
+///   - outbound_sync_task (task that periodically broadcasts transactions to peers).
+///   - inbound_network_task (task that handles inbound mempool messages and network events).
+///   - gc_task (task that performs GC of all expired transactions by SystemTTL).
+pub(crate) fn start_shared_mempool<V>(
+    executor: &Handle,
+    config: &configure::TxPoolConfig,
+    mempool: Arc<RwLock<CoreMempool>>,
+    client_events: MempoolClientReceiver,
+    broadcast_tx_events: MempoolBroadCastTxReceiver,
+    consensus_requests: MempoolConsensusReceiver,
+    committed_events: MempoolCommitNotificationReceiver,
+    validator: Arc<RwLock<V>>,
+) where
+    V: TransactionValidation + 'static,
+{
+    let smp = SharedMempool {
+        mempool: mempool.clone(),
+        config: config.clone(), 
+        validator,
+    };
+
+    executor.spawn(coordinator(
+        smp,
+        executor.clone(),
+        client_events,
+        broadcast_tx_events,
+        consensus_requests,
+        committed_events,
+    ));
+
+    executor.spawn(gc_coordinator(
+        mempool.clone(),
+        config.system_transaction_gc_interval_ms,
+    ));
+
+    executor.spawn(broadcast_transaction(
+        mempool.clone(),
+        config.broadcast_transaction_interval_ms,
+    ));
+}
+
+pub fn bootstrap(
+    config: &configure::TxPoolConfig,
+    client_events: MempoolClientReceiver,
+    broadcast_tx_events: MempoolBroadCastTxReceiver,
+    consensus_requests: MempoolConsensusReceiver,
+    committed_events: MempoolCommitNotificationReceiver,
+    network: PeerNetwork,
+) -> Runtime {
+    let runtime = Builder::new_multi_thread()
+        .thread_name("shared-mem")
+        .enable_all()
+        .build()
+        .expect("[shared mempool] failed to create runtime");
+    let mempool = TxPoolInstanceRef.clone();
+    {
+        mempool.write().reinit(config, network);
+    }
+    let vm_validator = Arc::new(RwLock::new(TxValidator::new()));
+    start_shared_mempool(
+        runtime.handle(),
+        config,
+        mempool,
+        client_events,
+        broadcast_tx_events,
+        consensus_requests,
+        committed_events,
+        vm_validator,
+        // vec![],
+    );
+    runtime
 }
