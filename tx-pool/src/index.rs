@@ -1,15 +1,15 @@
 
 /// This module provides various indexes used by pool.
-use crate::transaction::{PoolTransaction, TimelineState};
 use itertools::Itertools;
-use rand::seq::SliceRandom;
+
 use std::{
     cmp::Ordering,
-    collections::{btree_map, btree_set, BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{btree_set, BTreeMap, BTreeSet, HashMap, HashSet},
     iter::Rev,
-    ops::Bound,
     time::Duration,
 };
+
+use crate::transaction::PoolTransaction;
 
 pub type AccountTransactions = BTreeMap<u64, PoolTransaction>;
 
@@ -220,7 +220,7 @@ impl ParkingLotIndex {
 
     pub(crate) fn contains(&self, account: &str, seq_num: &u64) -> bool {
         if let Some(set) = self.data.get(account) {
-            if let Some(v) = set.get(seq_num) {
+            if let Some(_v) = set.get(seq_num) {
                 return true;
             }
         }

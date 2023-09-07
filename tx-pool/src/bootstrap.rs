@@ -5,24 +5,16 @@ use crate::types::{
     BroadCastTxReceiver, ClientReceiver, CommitNotification, CommitNotificationReceiver, Shared,
     SubmissionStatusBundle,
 };
-use crate::TxPoolInstanceRef;
-use crate::TEST_TXPOOL_INCHANNEL_AND_SWPAN;
-use crate::{Pool, TxState, TxnPointer};
+use crate::transaction::TxState;
+use crate::{TEST_TXPOOL_INCHANNEL_AND_SWPAN, TxPoolInstanceRef};
+use crate::pool::Pool;
 use anyhow::Result;
+use futures::channel::oneshot;
 use futures::future::{Future, FutureExt};
-use futures::{
-    channel::{mpsc, oneshot},
-    stream::{select_all, FuturesUnordered},
-    StreamExt,
-};
+use futures::StreamExt;
 use network::PeerNetwork;
-use parking_lot::{Mutex, Once, RawRwLock, RwLock};
-use protobuf::Message;
-use protos::ledger::TransactionSign;
 use rayon::prelude::*;
 use std::{
-    cmp,
-    collections::{HashMap, HashSet},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -33,8 +25,8 @@ use tokio::time::interval;
 use tokio_stream::wrappers::IntervalStream;
 use tracing::*;
 use types::TransactionSignRaw;
+use parking_lot::RwLock;
 pub type SubmissionStatus = (Status, Option<DiscardedVMStatus>);
-
 #[derive(Clone, Debug)]
 pub struct BoundedExecutor {
     semaphore: Arc<Semaphore>,
@@ -101,7 +93,7 @@ impl BoundedExecutor {
 
 /// Coordinator that handles inbound network events and outbound txn broadcasts.
 pub(crate) async fn coordinator<V>(
-    mut smp: Shared<V>,
+    smp: Shared<V>,
     executor: Handle,
     mut client_events: ClientReceiver,
     mut broadcast_tx_events: BroadCastTxReceiver,
@@ -116,7 +108,7 @@ pub(crate) async fn coordinator<V>(
 
     loop {
         ::futures::select! {
-            (mut transaction, callback) = client_events.select_next_some() => {
+            (transaction, callback) = client_events.select_next_some() => {
                 bounded_executor.spawn(process_client_transaction_submission(smp.clone(),transaction,callback)).await;
             },
             transactions = broadcast_tx_events.select_next_some() => {
@@ -149,7 +141,7 @@ pub(crate) async fn broadcast_transaction(pool: Arc<RwLock<Pool>>, tx_interval: 
 /// Processes transactions directly submitted by client.
 pub(crate) async fn process_client_transaction_submission<V>(
     smp: Shared<V>,
-    mut transaction: TransactionSignRaw,
+    transaction: TransactionSignRaw,
     callback: oneshot::Sender<Result<SubmissionStatus>>,
 ) where
     V: TransactionValidation,
@@ -250,7 +242,7 @@ where
         .collect::<Vec<_>>();
     {
         let mut mempool = smp.mempool.write();
-        for (idx, (mut transaction, db_sequence_number)) in transactions.into_iter().enumerate() {
+        for (idx, (transaction, db_sequence_number)) in transactions.into_iter().enumerate() {
             if let Ok(validation_result) = &validation_results[idx] {
                 match validation_result.status() {
                     None => {
@@ -286,14 +278,14 @@ pub(crate) async fn process_transaction_broadcast<V>(
 ) where
     V: TransactionValidation,
 {
-    let results = process_incoming_transactions(&smp, transactions, TxState::NotReady);
+    let _results = process_incoming_transactions(&smp, transactions, TxState::NotReady);
 }
 
 /// Remove transactions that are committed (or rejected) so that we can stop broadcasting them.
 pub(crate) async fn process_committed_transactions<V>(
     smp: Shared<V>,
     msg: CommitNotification,
-    block_timestamp_usecs: u64,
+    _block_timestamp_usecs: u64,
     is_rejected: bool,
 ) where
     V: TransactionValidation,

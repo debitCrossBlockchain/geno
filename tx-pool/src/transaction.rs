@@ -1,11 +1,10 @@
 
-use parking_lot::RwLock;
-use protobuf::Message;
-use serde::{Deserialize, Serialize};
-use std::{cell::RefCell, ops::Deref, rc::Rc, sync::Arc, time::Duration};
-use types::TransactionSignRaw;
 
-use utils::timing::Timestamp;
+
+use serde::{Deserialize, Serialize};
+use types::TransactionSignRaw;
+use std::time::Duration;
+
 #[derive(Clone)]
 pub struct PoolTransaction {
     pub txn: TransactionSignRaw,

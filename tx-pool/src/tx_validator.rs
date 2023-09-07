@@ -1,18 +1,11 @@
-
 use crate::tx_verify_pool::*;
-use anyhow::{Error, Result};
-use base64::{decode, encode};
-
-use msp::signing::eddsa_ed25519::{EddsaEd25519Context, EddsaEd25519PublicKey};
-use msp::signing::sm2::{Sm2Context, Sm2PublicKey};
 use msp::signing::{create_context, create_public_key_by_bytes, Context};
-use msp::HashInstanceRef;
 use protobuf::Message;
-use types::{TransactionRaw, TransactionSignRaw};
-
 use serde::{de, ser, Deserialize, Serialize};
-use std::sync::Arc;
+use types::TransactionSignRaw;
 use std::{convert::TryFrom, fmt};
+use anyhow::{Error, Result};
+
 
 pub static VALIDATION_STATUS_MIN_CODE: u64 = 0;
 
@@ -256,7 +249,7 @@ impl VMValidatorResult {
     }
 }
 
-pub fn get_account_nonce_banace(account_address: &str) -> Result<(u64, u64)> {
+pub fn get_account_nonce_banace(_account_address: &str) -> Result<(u64, u64)> {
     // for i in 0..3 {
     //     let last_state = { LastLedgerStateRef.read().get() };
     //     if let Some((nonce, balance)) =

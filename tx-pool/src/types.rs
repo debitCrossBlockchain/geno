@@ -1,6 +1,5 @@
-use crate::Pool;
+use crate::pool::Pool;
 use crate::status::Status;
-use crate::config::TxPoolConfig;
 use crate::tx_validator::{DiscardedVMStatus, TransactionValidation};
 use anyhow::Result;
 use futures::{
@@ -8,11 +7,10 @@ use futures::{
     future::Future,
     task::{Context, Poll},
 };
-use parking_lot::{Mutex, Once, RawRwLock, RwLock};
-use protos::ledger::TransactionSign;
 use types::TransactionSignRaw;
-use std::{collections::HashMap, fmt, pin::Pin, sync::Arc, task::Waker, time::Instant};
-use tokio::runtime::Handle;
+use std::{collections::HashMap, fmt, sync::Arc};
+use parking_lot::RwLock;
+
 /// Struct that owns all dependencies required by shared mempool routines.
 #[derive(Clone)]
 pub(crate) struct Shared<V>
@@ -21,10 +19,7 @@ where
 {
     pub mempool: Arc<RwLock<Pool>>,
     pub config: configure::TxPoolConfig,
-    // pub network_senders: HashMap<NodeNetworkId, MempoolNetworkSender>,
     pub validator: Arc<RwLock<V>>,
-    // pub peer_manager: Arc<PeerManager>,
-    // pub subscribers: Vec<UnboundedSender<SharedMempoolNotification>>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -121,7 +116,7 @@ impl fmt::Display for ConsensusRequest {
         let payload = match self {
             ConsensusRequest::GetBlockRequest(
                 block_size,
-                contact_size,
+                _contact_size,
                 excluded_txns,
                 _,
             ) => {

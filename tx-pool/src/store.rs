@@ -1,19 +1,18 @@
+
 use crate::status::{Status, StatusCode};
-use crate::config::TxPoolConfig;
 use crate::{
-    index::{AccountTransactions, ParkingLotIndex, PriorityIndex, PriorityQueueIter, TTLIndex},
+    index::{AccountTransactions, PriorityIndex, PriorityQueueIter, TTLIndex},
     transaction::{PoolTransaction, TxState},
-    ttl_cache::TtlCache,
 };
 use protobuf::Message;
-use protos::common::ProtocolsMessageType;
+
 use std::{
     collections::HashMap,
     ops::Bound,
-    time::{Duration, SystemTime},
 };
 use tracing::info;
 use types::TransactionSignRaw;
+use std::time::Duration;
 use utils::timing::duration_since_epoch;
 
 /// Store is in-memory storage for all transactions in pool.
@@ -205,19 +204,8 @@ impl Store {
         self.hash_index.remove(txn.get_hash());
     }
 
-    /// Garbage collect old transactions.
-    pub(crate) fn gc_by_system_ttl(&mut self, metrics_cache: &TtlCache<(String, u64), SystemTime>) {
-        let now = duration_since_epoch();
-
-        self.gc(now, true, metrics_cache);
-    }
-
-    fn gc(
-        &mut self,
-        now: Duration,
-        by_system_ttl: bool,
-        metrics_cache: &TtlCache<(String, u64), SystemTime>,
-    ) {
+    pub fn gc(&mut self) {
+        let now: Duration = duration_since_epoch();
         let index = &mut self.system_ttl_index;
         let mut gc_txns = index.gc(now);
         // sort the expired txns by order of sequence number per account
@@ -226,8 +214,8 @@ impl Store {
 
         while let Some(key) = gc_iter.next() {
             if let Some(txns) = self.transactions.get_mut(&key.address) {
-                let park_range_start = Bound::Excluded(key.sequence_number);
-                let park_range_end = gc_iter
+                let _park_range_start = Bound::Excluded(key.sequence_number);
+                let _park_range_end = gc_iter
                     .peek()
                     .filter(|next_key| key.address == next_key.address)
                     .map_or(Bound::Unbounded, |next_key| {
@@ -260,7 +248,7 @@ impl Store {
         for (sender, set) in self.transactions.iter() {
             if let Some(account_sequence) = sequence_number_cache.get(sender) {
                 let mut index = 0;
-                for (seq, t) in set.iter() {
+                for (_seq, t) in set.iter() {
                     if t.state != TxState::Sended {
                         break;
                     }

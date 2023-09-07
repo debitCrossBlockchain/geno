@@ -1,27 +1,24 @@
 //! pool is used to track transactions which have been submitted but not yet
 //! agreed upon.
 use crate::status::{Status, StatusCode};
-use crate::config::TxPoolConfig;
 use crate::types::CommittedTransaction;
 use crate::{
-    // counters,
-    index::{PriorityIndex, TxnPointer},
-    transaction::{PoolTransaction, TimelineState, TxState},
+    index::PriorityIndex,
     store::Store,
-    ttl_cache::TtlCache,
+    transaction::{PoolTransaction, TxState},
 };
 use network::PeerNetwork;
 use protobuf::{Message, RepeatedField};
 use protos::common::{ProtocolsMessage, ProtocolsMessageType};
-use protos::ledger::{Transaction, TransactionSign, TransactionSignSet};
+use utils::TransactionSign;
 use std::collections::HashMap;
 use std::{
     cmp::max,
     collections::HashSet,
     time::{Duration, SystemTime},
 };
-use std::{net::SocketAddr, str::FromStr};
-use tracing::*;
+
+
 use types::TransactionSignRaw;
 use utils::timing::duration_since_epoch;
 pub struct Pool {
@@ -29,18 +26,13 @@ pub struct Pool {
     transactions: Store,
 
     sequence_number_cache: HashMap<String, u64>,
-    // For each transaction, an entry with a timestamp is added when the transaction enters pool.
-    // This is used to measure e2e latency of transactions in the system, as well as the time it
-    // takes to pick it up by consensus.
-    pub(crate) metrics_cache: TtlCache<(String, u64), SystemTime>,
+
     pub system_transaction_timeout: Duration,
 
     // for broadcast transactions
     pub broadcast_max_batch_size: usize,
     pub broadcast_cache: Vec<TransactionSignRaw>,
     pub network: Option<PeerNetwork>,
-    //for commit to delete tx
-    pub waiting_be_delete: Vec<(String, u64)>,
 }
 
 impl Pool {
@@ -48,12 +40,10 @@ impl Pool {
         Pool {
             transactions: Store::new(&config),
             sequence_number_cache: HashMap::with_capacity(config.capacity),
-            metrics_cache: TtlCache::new(config.capacity, Duration::from_secs(100)),
             system_transaction_timeout: Duration::from_secs(config.system_transaction_timeout_secs),
             broadcast_cache: Vec::new(),
             broadcast_max_batch_size: config.broadcast_max_batch_size,
             network,
-            waiting_be_delete: Vec::new(),
         }
     }
 
@@ -61,7 +51,6 @@ impl Pool {
         self.transactions = Store::new(&config);
         self.sequence_number_cache = HashMap::with_capacity(config.capacity);
         self.broadcast_max_batch_size = config.broadcast_max_batch_size;
-        self.metrics_cache = TtlCache::new(config.capacity, Duration::from_secs(100));
         self.system_transaction_timeout =
             Duration::from_secs(config.system_transaction_timeout_secs);
         self.network = Some(network);
@@ -92,7 +81,7 @@ impl Pool {
         &mut self,
         sender: &str,
         sequence_number: u64,
-        is_rejected: bool,
+        _is_rejected: bool,
     ) {
         let current_seq_number = self
             .sequence_number_cache
@@ -115,8 +104,8 @@ impl Pool {
     pub fn add_txn(
         &mut self,
         txn: TransactionSignRaw,
-        gas_amount: u64,
-        ranking_score: u128,
+        _gas_amount: u64,
+        _ranking_score: u128,
         db_sequence_number: u64,
         tx_state: TxState,
     ) -> Status {
@@ -164,8 +153,8 @@ impl Pool {
 
             if self.broadcast_cache.len() <= self.broadcast_max_batch_size {
                 let vec = self.broadcast_cache.drain(..).collect::<Vec<_>>();
-                let mut vec_signs: Vec<TransactionSign> = Vec::new();
-                for it in vec {
+                let vec_signs: Vec<TransactionSign> = Vec::new();
+                for _it in vec {
                     //vec_signs.push(<TransactionSignRaw as TryInto<TransactionSign>>::try_into(it).unwrap());
                 }
                 broadcast.set_transactions(RepeatedField::from(vec_signs));
@@ -174,8 +163,8 @@ impl Pool {
                     .broadcast_cache
                     .drain(0..self.broadcast_max_batch_size)
                     .collect::<Vec<_>>();
-                let mut vec_signs: Vec<TransactionSign> = Vec::new();
-                for it in vec {
+                let vec_signs: Vec<TransactionSign> = Vec::new();
+                for _it in vec {
                     //vec_signs.push(<TransactionSignRaw as TryInto<TransactionSign>>::try_into(it).unwrap());
                 }
                 broadcast.set_transactions(RepeatedField::from(vec_signs));
@@ -262,7 +251,7 @@ impl Pool {
         &self,
         batch_size: u64,
         max_contract_size: u64,
-        ledger_seq: i64,
+        _ledger_seq: i64,
         exclude_transactions: &HashMap<String, CommittedTransaction>,
     ) -> Vec<Vec<u8>> {
         let mut txn_walked = 0u64;
@@ -297,7 +286,7 @@ impl Pool {
     pub fn get_block_by_hashs(
         &self,
         hash_list: &[Vec<u8>],
-        ledger_seq: i64,
+        _ledger_seq: i64,
     ) -> (Vec<TransactionSignRaw>, HashMap<Vec<u8>, usize>) {
         let mut block: Vec<TransactionSignRaw> = Vec::with_capacity(hash_list.len());
         let mut lacktxs: HashMap<Vec<u8>, usize> = HashMap::new();
@@ -320,11 +309,6 @@ impl Pool {
     /// Removes all expired transactions and clears expired entries in metrics
     /// cache and sequence number cache.
     pub(crate) fn gc(&mut self) {
-        let start = std::time::Instant::now();
-        let now = SystemTime::now();
-        self.transactions.gc_by_system_ttl(&self.metrics_cache);
-        // self.metrics_cache.gc(now);
-        let latency = start.elapsed();
-        info!("[tx-pool] txpool-trace gc({})micros", latency.as_micros());
+        self.transactions.gc();
     }
 }
