@@ -14,8 +14,8 @@ pub mod types;
 pub use bootstrap::bootstrap;
 mod queues;
 pub mod status;
-pub mod tx_pool_channel;
-pub mod tx_pool_config;
+pub mod channel;
+pub mod config;
 pub mod tx_validator;
 
 pub mod bootstrap;

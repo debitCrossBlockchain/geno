@@ -1,5 +1,5 @@
 use crate::status::{Status, StatusCode};
-use crate::tx_pool_config::TxPoolConfig;
+use crate::config::TxPoolConfig;
 use crate::{
     index::{AccountTransactions, ParkingLotIndex, PriorityIndex, PriorityQueueIter, TTLIndex},
     transaction::{PoolTransaction, TxState},

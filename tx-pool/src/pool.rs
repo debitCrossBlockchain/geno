@@ -1,7 +1,7 @@
 //! pool is used to track transactions which have been submitted but not yet
 //! agreed upon.
 use crate::status::{Status, StatusCode};
-use crate::tx_pool_config::TxPoolConfig;
+use crate::config::TxPoolConfig;
 use crate::types::CommittedTransaction;
 use crate::CoreMempool;
 use crate::{

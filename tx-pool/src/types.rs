@@ -1,6 +1,6 @@
 use crate::CoreMempool;
 use crate::status::Status;
-use crate::tx_pool_config::TxPoolConfig;
+use crate::config::TxPoolConfig;
 use crate::tx_validator::{DiscardedVMStatus, TransactionValidation};
 use anyhow::Result;
 use futures::{
