@@ -40,14 +40,6 @@ pub struct Pool {
     pub broadcast_max_batch_size: usize,
     pub broadcast_cache: Vec<TransactionSignRaw>,
     pub network: Option<PeerNetwork>,
-
-    // for test performance
-    pub count: u64,
-    pub duration: Duration,
-    pub read_account_duration: Duration,
-    pub verify_duration: Duration,
-    pub add_txn_duration: Duration,
-
     //for commit to delete tx
     pub waiting_be_delete: Vec<(String, u64)>,
 }
@@ -62,11 +54,6 @@ impl Pool {
             broadcast_cache: Vec::new(),
             broadcast_max_batch_size: config.broadcast_max_batch_size,
             network,
-            count: 0,
-            duration: Duration::new(0, 0),
-            read_account_duration: Duration::new(0, 0),
-            verify_duration: Duration::new(0, 0),
-            add_txn_duration: Duration::new(0, 0),
             waiting_be_delete: Vec::new(),
         }
     }
@@ -239,20 +226,12 @@ impl Pool {
         exclude_transactions: &HashMap<String, CommittedTransaction>,
     ) -> Vec<TransactionSignRaw> {
         let mut txn_walked = 0u64;
-
-        let t1 = chrono::Local::now();
         let mut priority_index = PriorityIndex::new();
         let iter_queue = self.transactions.iter_queue(
             &mut priority_index,
             &self.sequence_number_cache,
             max_contract_size,
         );
-        let iter_queue_size = iter_queue.len();
-        let t2 = chrono::Local::now();
-
-        // let block: Vec<_> = iter_queue
-        //     .filter_map(|k| self.transactions.get(&k.address, k.sequence_number))
-        //     .collect();
 
         let mut block: Vec<TransactionSignRaw> = Vec::with_capacity(batch_size as usize);
         for k in iter_queue {
@@ -289,20 +268,12 @@ impl Pool {
     ) -> Vec<Vec<u8>> {
         let mut txn_walked = 0u64;
 
-        let t1 = chrono::Local::now();
         let mut priority_index = PriorityIndex::new();
         let iter_queue = self.transactions.iter_queue(
             &mut priority_index,
             &self.sequence_number_cache,
             max_contract_size,
         );
-        let iter_queue_size = iter_queue.len();
-        let t2 = chrono::Local::now();
-
-        // let block: Vec<_> = iter_queue
-        //     .filter_map(|k| self.transactions.get_hash(&k.address, k.sequence_number))
-        //     .collect();
-
         let mut block: Vec<Vec<u8>> = Vec::with_capacity(batch_size as usize);
         for k in iter_queue {
             if let Some(hash) = self.transactions.get_hash(&k.address, k.sequence_number) {
@@ -346,7 +317,7 @@ impl Pool {
         (block, lacktxs)
     }
 
-    /// Periodic core mempool garbage collection.
+    /// Periodic core pool garbage collection.
     /// Removes all expired transactions and clears expired entries in metrics
     /// cache and sequence number cache.
     pub(crate) fn gc(&mut self) {
@@ -356,100 +327,5 @@ impl Pool {
         // self.metrics_cache.gc(now);
         let latency = start.elapsed();
         info!("[tx-pool] txpool-trace gc({})micros", latency.as_micros());
-    }
-
-    pub(crate) fn statistic(
-        &mut self,
-        count: u64,
-        duration: Duration,
-        read_account_duration: Duration,
-        verify_duration: Duration,
-        add_txn_duration: Duration,
-    ) {
-        self.count += count;
-        self.duration += duration;
-        self.read_account_duration += read_account_duration;
-        self.verify_duration += verify_duration;
-        self.add_txn_duration += add_txn_duration;
-    }
-
-    pub(crate) fn display_statistic(&self) -> String {
-        format!(
-            "insert count {} avg insert {} micros({}-{}-{})",
-            self.count,
-            self.duration.as_micros() / (self.count as u128),
-            self.read_account_duration.as_micros() / (self.count as u128),
-            self.verify_duration.as_micros() / (self.count as u128),
-            self.add_txn_duration.as_micros() / (self.count as u128)
-        )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{
-        index::TxnPointer,
-        transaction::{self, PoolTransaction, TimelineState, TxState},
-        store::Store,
-        ttl_cache::TtlCache,
-        CoreMempool,
-    };
-    use configure::TxPoolConfig;
-    use criterion::*;
-    use network::PeerNetwork;
-    use parking_lot::{Mutex, Once, RawRwLock, RwLock};
-    use protos::ledger::TransactionSign;
-    use std::{
-        cmp::max,
-        collections::HashSet,
-        sync::Arc,
-        time::{Duration, Instant, SystemTime},
-    };
-    use utils::{private_key, transaction_factory::*};
-
-    fn create_txs() -> Vec<TransactionSign> {
-        let sender = "did:gdt:0xf6b02a2d47b84e845b7e3623355f041bcb36daf1";
-        let private_key = "fc5a55e22797ed20e78b438d9e3ca873877a7b55a604dfa7531c300e743c5ef1";
-
-        let dest_addr = "did:gdt:0xe1ba3068fe19fd3019cb82982fca87835fbccd1f";
-
-        let mut vec = Vec::new();
-        for nonce in 1..=10000 {
-            let transaction =
-                generate_pay_coin_transaction(sender, private_key, nonce, dest_addr, "abc", "bbc");
-            vec.push(transaction);
-        }
-        vec
-    }
-
-    #[actix_rt::test]
-    async fn test_txpool_add_txs() {
-        let txs = create_txs();
-        let len = txs.len();
-        let config = TxPoolConfig::default();
-        let mempool = Arc::new(RwLock::new(CoreMempool::new(&config, None)));
-
-        let mut mempool = mempool.write();
-        let start = Instant::now();
-        for tx in txs {
-            let transaction = tx.clone();
-            let mut n = 1;
-            if transaction.get_transaction().get_nonce() > 100 {
-                n = 100;
-            }
-            let s = mempool.add_txn(
-                tx,
-                0,
-                1,
-                transaction.get_transaction().get_nonce() - n,
-                TxState::NotReady,
-            );
-            // println!("{},{}", s.code, s.message);
-        }
-        println!(
-            "txs({}) time cost: {:?} micros",
-            len,
-            start.elapsed().as_micros(),
-        );
     }
 }
