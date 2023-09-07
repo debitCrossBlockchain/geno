@@ -4,7 +4,7 @@
 //! Objects used by/related to shared mempool
 
 use crate::CoreMempool;
-use crate::mempool_status::MempoolStatus;
+use crate::status::Status;
 use crate::tx_pool_config::TxPoolConfig;
 use crate::tx_validator::{DiscardedVMStatus, TransactionValidation};
 use anyhow::Result;
@@ -158,7 +158,7 @@ pub enum MempoolConsensusResponse {
     CommitResponse(),
 }
 
-pub type SubmissionStatus = (MempoolStatus, Option<DiscardedVMStatus>);
+pub type SubmissionStatus = (Status, Option<DiscardedVMStatus>);
 
 pub type SubmissionStatusBundle = (TransactionSignRaw, SubmissionStatus);
 

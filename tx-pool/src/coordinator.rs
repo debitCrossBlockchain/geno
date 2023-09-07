@@ -1,28 +1,23 @@
 //! Processes that are directly spawned by shared mempool runtime initialization
 
 use crate::{
-    {CoreMempool, TimelineState},
-        mempool_status::MempoolStatus,
+    CoreMempool,
+        status::Status,
         tasks,
-        tasks::{process_committed_transactions, process_consensus_request},
         tx_validator::{DiscardedVMStatus, TransactionValidation},
         types::{
             MempoolBroadCastTxReceiver, MempoolClientReceiver, MempoolCommitNotification,
             MempoolCommitNotificationReceiver, MempoolConsensusReceiver, SharedMempool,
-            SubmissionStatus, TransactionSummary,
         },
-        TEST_TXPOOL_INCHANNEL_AND_SWPAN,
 };
 use anyhow::Result;
 use futures::future::{Future, FutureExt};
-use futures::task::SpawnExt;
 use futures::{
     channel::{mpsc, oneshot},
     stream::{select_all, FuturesUnordered},
     StreamExt,
 };
-use parking_lot::{Mutex, Once, RawRwLock, RwLock};
-use protos::ledger::TransactionSign;
+use parking_lot::RwLock;
 use types::TransactionSignRaw;
 use std::{
     sync::Arc,
@@ -142,7 +137,7 @@ async fn handle_client_event<V>(
     smp: &mut SharedMempool<V>,
     bounded_executor: &BoundedExecutor,
     mut transaction: TransactionSignRaw,
-    callback: oneshot::Sender<anyhow::Result<(MempoolStatus, Option<DiscardedVMStatus>)>>,
+    callback: oneshot::Sender<anyhow::Result<(Status, Option<DiscardedVMStatus>)>>,
 ) where
     V: TransactionValidation,
 {

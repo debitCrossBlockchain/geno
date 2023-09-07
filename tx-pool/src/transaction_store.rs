@@ -3,7 +3,7 @@ use crate::{
     transaction::{MempoolTransaction, TxState},
     ttl_cache::TtlCache,
 };
-use crate::mempool_status::{MempoolStatus, MempoolStatusCode};
+use crate::status::{Status, StatusCode};
 use crate::tx_pool_config::TxPoolConfig;
 use protobuf::Message;
 use protos::common::ProtocolsMessageType;
@@ -91,7 +91,7 @@ impl TransactionStore {
     }
 
     /// Insert transaction into TransactionStore. Performs validation checks and updates indexes.
-    pub(crate) fn insert(&mut self, mut txn: MempoolTransaction) -> MempoolStatus {
+    pub(crate) fn insert(&mut self, mut txn: MempoolTransaction) -> Status {
         let tx_hash = txn.get_hash().to_vec();
         let address = txn.get_sender().to_string();
         let sequence_info = txn.get_sequence_info();
@@ -105,7 +105,7 @@ impl TransactionStore {
             {
                 // already have same tx
                 if current_version.get_hash() == txn.get_hash() {
-                    return MempoolStatus::new(MempoolStatusCode::Pending);
+                    return Status::new(StatusCode::Pending);
                 }
 
                 if current_version.get_gas_price() < txn.get_gas_price() {
@@ -113,7 +113,7 @@ impl TransactionStore {
                         self.index_remove(&txn);
                     }
                 } else {
-                    return MempoolStatus::new(MempoolStatusCode::InvalidSeqNumber).with_message(
+                    return Status::new(StatusCode::InvalidSeqNumber).with_message(
                         format!(
                             "this transacetion's nonce({}) is too old,you need update nonce,sender({}) have submitted a transaction({}) witch is same nonce",
                             sequence_info.transaction_sequence_number,
@@ -126,7 +126,7 @@ impl TransactionStore {
         }
 
         if self.system_ttl_index.size() >= self.capacity {
-            return MempoolStatus::new(MempoolStatusCode::MempoolIsFull).with_message(format!(
+            return Status::new(StatusCode::IsFull).with_message(format!(
                 "mempool size: {}, capacity: {}",
                 self.system_ttl_index.size(),
                 self.capacity,
@@ -140,7 +140,7 @@ impl TransactionStore {
         if let Some(txns) = self.transactions.get_mut(&address) {
             // capacity check
             if txns.len() >= self.capacity_per_user {
-                return MempoolStatus::new(MempoolStatusCode::TooManyTransactions).with_message(
+                return Status::new(StatusCode::TooManyTransactions).with_message(
                     format!(
                         "txns length: {} capacity per user: {}",
                         txns.len(),
@@ -161,7 +161,7 @@ impl TransactionStore {
             txns.insert(sequence_info.transaction_sequence_number, txn);
         }
 
-        let status = MempoolStatus::new(MempoolStatusCode::Accepted);
+        let status = Status::new(StatusCode::Accepted);
         let hash = String::from_utf8(tx_hash).unwrap();
         let result = status.with_message(hash);
 

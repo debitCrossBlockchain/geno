@@ -5,7 +5,7 @@
 
 use crate::coordinator::{broadcast_transaction, coordinator, gc_coordinator};
 use crate::{CoreMempool, TimelineState, TxState, TxnPointer};
-use crate::mempool_status::{MempoolStatus, MempoolStatusCode};
+use crate::status::{Status, StatusCode};
 use crate::tx_validator::{
     get_account_nonce_banace, DiscardedVMStatus, TransactionValidation,
 };
@@ -36,7 +36,7 @@ use utils::timing::Timestamp;
 use tokio::runtime::{Builder, Handle, Runtime};
 use crate::TxPoolInstanceRef;
 use network::PeerNetwork;
-pub type SubmissionStatus = (MempoolStatus, Option<DiscardedVMStatus>);
+pub type SubmissionStatus = (Status, Option<DiscardedVMStatus>);
 
 /// Processes transactions directly submitted by client.
 pub(crate) async fn process_client_transaction_submission<V>(
@@ -56,7 +56,7 @@ pub(crate) async fn process_client_transaction_submission<V>(
 }
 
 fn is_txn_retryable(result: SubmissionStatus) -> bool {
-    result.0.code == MempoolStatusCode::MempoolIsFull
+    result.0.code == StatusCode::IsFull
 }
 
 /// Submits a list of SignedTransaction to the local mempool
@@ -72,7 +72,7 @@ where
     let mut statuses = vec![];
     if TEST_TXPOOL_INCHANNEL_AND_SWPAN {
         for txn in transactions {
-            let status = MempoolStatus::new(MempoolStatusCode::Accepted);
+            let status = Status::new(StatusCode::Accepted);
             let tx_hash = txn.tx.hash();
             let hash = String::from_utf8(Vec::from(tx_hash)).unwrap();
             let result = status.with_message(hash);
@@ -113,7 +113,7 @@ where
                             statuses.push((
                                 t,
                                 (
-                                    MempoolStatus::new(MempoolStatusCode::VmError),
+                                    Status::new(StatusCode::VmError),
                                     Some(
                                         DiscardedVMStatus::INSUFFICIENT_BALANCE_FOR_TRANSACTION_FEE,
                                     ),
@@ -129,7 +129,7 @@ where
                     statuses.push((
                         t,
                         (
-                            MempoolStatus::new(MempoolStatusCode::VmError),
+                            Status::new(StatusCode::VmError),
                             Some(DiscardedVMStatus::SEQUENCE_NUMBER_TOO_OLD),
                         ),
                     ));
@@ -139,7 +139,7 @@ where
                 statuses.push((
                     t,
                     (
-                        MempoolStatus::new(MempoolStatusCode::VmError),
+                        Status::new(StatusCode::VmError),
                         Some(DiscardedVMStatus::RESOURCE_DOES_NOT_EXIST),
                     ),
                 ));
@@ -175,7 +175,7 @@ where
                         statuses.push((
                             transaction.clone(),
                             (
-                                MempoolStatus::new(MempoolStatusCode::VmError),
+                                Status::new(StatusCode::VmError),
                                 Some(validation_status),
                             ),
                         ));

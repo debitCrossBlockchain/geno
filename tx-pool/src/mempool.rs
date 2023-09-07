@@ -3,7 +3,7 @@
 
 //! Mempool is used to track transactions which have been submitted but not yet
 //! agreed upon.
-use crate::mempool_status::{MempoolStatus, MempoolStatusCode};
+use crate::status::{Status,StatusCode};
 use crate::tx_pool_config::TxPoolConfig;
 use crate::types::CommittedTransaction;
 use crate::CoreMempool;
@@ -136,7 +136,7 @@ impl Mempool {
         ranking_score: u128,
         db_sequence_number: u64,
         tx_state: TxState,
-    ) -> MempoolStatus {
+    ) -> Status {
         ///todo log transaction
         let cached_value = self.sequence_number_cache.get(txn.tx.sender());
         let sequence_number =
@@ -146,7 +146,7 @@ impl Mempool {
 
         // don't accept old transactions (e.g. seq is less than account's current seq_number)
         if txn.tx.nonce() <= db_sequence_number {
-            return MempoolStatus::new(MempoolStatusCode::InvalidSeqNumber).with_message(format!(
+            return Status::new(StatusCode::InvalidSeqNumber).with_message(format!(
                 "transaction sequence number is {}, account sequence number is  {}",
                 txn.tx.nonce(),
                 db_sequence_number
@@ -160,7 +160,7 @@ impl Mempool {
 
         let status = self.transactions.insert(txn_info);
 
-        if status.code == MempoolStatusCode::Accepted
+        if status.code == StatusCode::Accepted
             && (txn.source_type == protos::ledger::TransactionSign_SourceType::JSONRPC
                 || txn.source_type == protos::ledger::TransactionSign_SourceType::WEBSOCKET)
         {
