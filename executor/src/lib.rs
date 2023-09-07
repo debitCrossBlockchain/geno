@@ -1,6 +1,7 @@
 pub mod block_executor;
 pub mod block_result;
 pub mod last_commit_info;
+pub mod block_verify;
 
 use parking_lot::RwLock;
 
