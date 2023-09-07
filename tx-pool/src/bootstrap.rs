@@ -7,7 +7,7 @@ use crate::types::{
 };
 use crate::TxPoolInstanceRef;
 use crate::TEST_TXPOOL_INCHANNEL_AND_SWPAN;
-use crate::{CoreMempool, TxState, TxnPointer};
+use crate::{Pool, TxState, TxnPointer};
 use anyhow::Result;
 use futures::future::{Future, FutureExt};
 use futures::{
@@ -131,7 +131,7 @@ pub(crate) async fn coordinator<V>(
 }
 
 /// Garbage collect all expired transactions by SystemTTL.
-pub(crate) async fn gc_coordinator(mempool: Arc<RwLock<CoreMempool>>, gc_interval_ms: u64) {
+pub(crate) async fn gc_coordinator(mempool: Arc<RwLock<Pool>>, gc_interval_ms: u64) {
     let mut interval = IntervalStream::new(interval(Duration::from_millis(gc_interval_ms)));
     while let Some(_interval) = interval.next().await {
         mempool.write().gc();
@@ -139,7 +139,7 @@ pub(crate) async fn gc_coordinator(mempool: Arc<RwLock<CoreMempool>>, gc_interva
 }
 
 /// broadcast transaction
-pub(crate) async fn broadcast_transaction(pool: Arc<RwLock<CoreMempool>>, tx_interval: u64) {
+pub(crate) async fn broadcast_transaction(pool: Arc<RwLock<Pool>>, tx_interval: u64) {
     let mut interval = IntervalStream::new(interval(Duration::from_millis(tx_interval)));
     while let Some(_interval) = interval.next().await {
         pool.write().broadcast_transaction();

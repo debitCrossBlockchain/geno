@@ -12,9 +12,7 @@ mod ttl_cache;
 
 pub mod types;
 pub use bootstrap::bootstrap;
-mod queues;
 pub mod status;
-pub mod channel;
 pub mod config;
 pub mod tx_validator;
 
@@ -29,8 +27,8 @@ use std::sync::Arc;
 extern crate lazy_static;
 
 lazy_static! {
-    pub static ref TxPoolInstanceRef: Arc<RwLock<CoreMempool>> = Arc::new(RwLock::new(
-        CoreMempool::new(&TxPoolConfig::default(), None)
+    pub static ref TxPoolInstanceRef: Arc<RwLock<Pool>> = Arc::new(RwLock::new(
+        Pool::new(&TxPoolConfig::default(), None)
     ));
 }
 
@@ -38,6 +36,6 @@ lazy_static! {
 pub use self::ttl_cache::TtlCache;
 pub use self::{
     index::TxnPointer,
-    pool::Pool as CoreMempool,
+    pool::Pool,
     transaction::{TimelineState, TxState},
 };
