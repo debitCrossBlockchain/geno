@@ -1,8 +1,3 @@
-// Copyright (c) The  Core Contributors
-// SPDX-License-Identifier: Apache-2.0
-
-//! Objects used by/related to shared mempool
-
 use crate::CoreMempool;
 use crate::status::Status;
 use crate::tx_pool_config::TxPoolConfig;
@@ -162,17 +157,9 @@ pub type SubmissionStatus = (Status, Option<DiscardedVMStatus>);
 
 pub type SubmissionStatusBundle = (TransactionSignRaw, SubmissionStatus);
 
-pub type ClientSender =
-    mpsc::UnboundedSender<(TransactionSignRaw, oneshot::Sender<Result<SubmissionStatus>>)>;
-
-pub type ClientReceiver =
-    mpsc::UnboundedReceiver<(TransactionSignRaw, oneshot::Sender<Result<SubmissionStatus>>)>;
-
-// pub type ConsensusSender = mpsc::Sender<ConsensusRequest>;
-// pub type ConsensusReceiver = mpsc::Receiver<ConsensusRequest>;
-
+pub type ClientSender = mpsc::UnboundedSender<(TransactionSignRaw, oneshot::Sender<Result<SubmissionStatus>>)>;
+pub type ClientReceiver = mpsc::UnboundedReceiver<(TransactionSignRaw, oneshot::Sender<Result<SubmissionStatus>>)>;
 pub type CommitNotificationSender = mpsc::Sender<CommitNotification>;
 pub type CommitNotificationReceiver = mpsc::Receiver<CommitNotification>;
-
 pub type BroadCastTxSender = mpsc::UnboundedSender<Vec<TransactionSignRaw>>;
 pub type BroadCastTxReceiver = mpsc::UnboundedReceiver<Vec<TransactionSignRaw>>;

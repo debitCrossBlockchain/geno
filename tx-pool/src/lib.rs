@@ -5,9 +5,9 @@
 mod tx_verify_pool;
 
 mod index;
-mod mempool;
+mod pool;
 mod transaction;
-mod transaction_store;
+mod store;
 mod ttl_cache;
 
 pub mod types;
@@ -38,6 +38,6 @@ lazy_static! {
 pub use self::ttl_cache::TtlCache;
 pub use self::{
     index::TxnPointer,
-    mempool::Mempool as CoreMempool,
+    pool::Pool as CoreMempool,
     transaction::{TimelineState, TxState},
 };

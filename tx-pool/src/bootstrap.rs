@@ -120,7 +120,6 @@ pub(crate) async fn coordinator<V>(
                 bounded_executor.spawn(process_client_transaction_submission(smp.clone(),transaction,callback)).await;
             },
             transactions = broadcast_tx_events.select_next_some() => {
-                // handle_broadcast_event(&mut smp, &bounded_executor, transactions).await;
                 bounded_executor.spawn(process_transaction_broadcast(smp.clone(),transactions)).await;
             },
             msg = committed_events.select_next_some()=>{

@@ -1,8 +1,6 @@
-// Copyright (c) The  Core Contributors
-// SPDX-License-Identifier: Apache-2.0
 
-/// This module provides various indexes used by Mempool.
-use crate::transaction::{MempoolTransaction, TimelineState};
+/// This module provides various indexes used by pool.
+use crate::transaction::{PoolTransaction, TimelineState};
 use itertools::Itertools;
 use rand::seq::SliceRandom;
 use std::{
@@ -13,7 +11,7 @@ use std::{
     time::Duration,
 };
 
-pub type AccountTransactions = BTreeMap<u64, MempoolTransaction>;
+pub type AccountTransactions = BTreeMap<u64, PoolTransaction>;
 
 /// PriorityIndex represents the main Priority Queue in Mempool.
 /// It's used to form the transaction block for Consensus.
@@ -34,19 +32,19 @@ impl PriorityIndex {
         }
     }
 
-    pub(crate) fn insert(&mut self, txn: &MempoolTransaction) {
+    pub(crate) fn insert(&mut self, txn: &PoolTransaction) {
         self.data.insert(self.make_key(txn));
     }
 
-    pub(crate) fn remove(&mut self, txn: &MempoolTransaction) {
+    pub(crate) fn remove(&mut self, txn: &PoolTransaction) {
         self.data.remove(&self.make_key(txn));
     }
 
-    pub(crate) fn contains(&self, txn: &MempoolTransaction) -> bool {
+    pub(crate) fn contains(&self, txn: &PoolTransaction) -> bool {
         self.data.contains(&self.make_key(txn))
     }
 
-    fn make_key(&self, txn: &MempoolTransaction) -> OrderedQueueKey {
+    fn make_key(&self, txn: &PoolTransaction) -> OrderedQueueKey {
         OrderedQueueKey {
             gas_ranking_score: txn.get_tx().tx.gas_price(),
             expiration_time: txn.get_expiration_time(),
@@ -99,13 +97,13 @@ impl Ord for OrderedQueueKey {
 /// Index is ordered by `TTLOrderingKey::expiration_time`.
 pub struct TTLIndex {
     data: BTreeSet<TTLOrderingKey>,
-    get_expiration_time: Box<dyn Fn(&MempoolTransaction) -> Duration + Send + Sync>,
+    get_expiration_time: Box<dyn Fn(&PoolTransaction) -> Duration + Send + Sync>,
 }
 
 impl TTLIndex {
     pub(crate) fn new<F>(get_expiration_time: Box<F>) -> Self
     where
-        F: Fn(&MempoolTransaction) -> Duration + 'static + Send + Sync,
+        F: Fn(&PoolTransaction) -> Duration + 'static + Send + Sync,
     {
         Self {
             data: BTreeSet::new(),
@@ -113,11 +111,11 @@ impl TTLIndex {
         }
     }
 
-    pub(crate) fn insert(&mut self, txn: &MempoolTransaction) {
+    pub(crate) fn insert(&mut self, txn: &PoolTransaction) {
         self.data.insert(self.make_key(txn));
     }
 
-    pub(crate) fn remove(&mut self, txn: &MempoolTransaction) {
+    pub(crate) fn remove(&mut self, txn: &PoolTransaction) {
         self.data.remove(&self.make_key(txn));
     }
 
@@ -136,7 +134,7 @@ impl TTLIndex {
         ttl_transactions
     }
 
-    fn make_key(&self, txn: &MempoolTransaction) -> TTLOrderingKey {
+    fn make_key(&self, txn: &PoolTransaction) -> TTLOrderingKey {
         TTLOrderingKey {
             expiration_time: (self.get_expiration_time)(txn),
             address: txn.get_sender().to_string(),
@@ -190,7 +188,7 @@ impl ParkingLotIndex {
         }
     }
 
-    pub(crate) fn insert(&mut self, txn: &MempoolTransaction) {
+    pub(crate) fn insert(&mut self, txn: &PoolTransaction) {
         let sender = txn.get_sender();
         let sequence_number = txn.get_sequence_number();
         let is_new_entry = match self.data.get_mut(sender) {
@@ -207,7 +205,7 @@ impl ParkingLotIndex {
         }
     }
 
-    pub(crate) fn remove(&mut self, txn: &MempoolTransaction) {
+    pub(crate) fn remove(&mut self, txn: &PoolTransaction) {
         let sender = txn.get_sender();
         let sequence_number = txn.get_sequence_number();
         if let Some(set) = self.data.get_mut(sender) {
@@ -248,8 +246,8 @@ impl ParkingLotIndex {
 /// Includes Account's address and transaction sequence number.
 pub type TxnPointer = (String, u64);
 
-impl From<&MempoolTransaction> for TxnPointer {
-    fn from(transaction: &MempoolTransaction) -> Self {
+impl From<&PoolTransaction> for TxnPointer {
+    fn from(transaction: &PoolTransaction) -> Self {
         (
             transaction.get_sender().to_string(),
             transaction.get_sequence_number(),

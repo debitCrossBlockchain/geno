@@ -1,5 +1,3 @@
-// Copyright (c) The  Core Contributors
-// SPDX-License-Identifier: Apache-2.0
 
 use std::{
     collections::{HashMap, VecDeque},

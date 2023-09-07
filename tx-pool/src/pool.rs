@@ -1,17 +1,14 @@
-// Copyright (c) The  Core Contributors
-// SPDX-License-Identifier: Apache-2.0
-
-//! Mempool is used to track transactions which have been submitted but not yet
+//! pool is used to track transactions which have been submitted but not yet
 //! agreed upon.
-use crate::status::{Status,StatusCode};
+use crate::status::{Status, StatusCode};
 use crate::tx_pool_config::TxPoolConfig;
 use crate::types::CommittedTransaction;
 use crate::CoreMempool;
 use crate::{
     // counters,
     index::{PriorityIndex, TxnPointer},
-    transaction::{MempoolTransaction, TimelineState, TxState},
-    transaction_store::TransactionStore,
+    transaction::{PoolTransaction, TimelineState, TxState},
+    store::Store,
     ttl_cache::TtlCache,
 };
 use network::PeerNetwork;
@@ -28,9 +25,9 @@ use std::{net::SocketAddr, str::FromStr};
 use tracing::*;
 use types::TransactionSignRaw;
 use utils::timing::duration_since_epoch;
-pub struct Mempool {
+pub struct Pool {
     // Stores the metadata of all transactions in mempool (of all states).
-    transactions: TransactionStore,
+    transactions: Store,
 
     sequence_number_cache: HashMap<String, u64>,
     // For each transaction, an entry with a timestamp is added when the transaction enters mempool.
@@ -55,10 +52,10 @@ pub struct Mempool {
     pub waiting_be_delete: Vec<(String, u64)>,
 }
 
-impl Mempool {
+impl Pool {
     pub fn new(config: &configure::TxPoolConfig, network: Option<PeerNetwork>) -> Self {
-        Mempool {
-            transactions: TransactionStore::new(&config),
+        Pool {
+            transactions: Store::new(&config),
             sequence_number_cache: HashMap::with_capacity(config.capacity),
             metrics_cache: TtlCache::new(config.capacity, Duration::from_secs(100)),
             system_transaction_timeout: Duration::from_secs(config.system_transaction_timeout_secs),
@@ -75,7 +72,7 @@ impl Mempool {
     }
 
     pub fn reinit(&mut self, config: &configure::TxPoolConfig, network: PeerNetwork) {
-        self.transactions = TransactionStore::new(&config);
+        self.transactions = Store::new(&config);
         self.sequence_number_cache = HashMap::with_capacity(config.capacity);
         self.broadcast_max_batch_size = config.broadcast_max_batch_size;
         self.metrics_cache = TtlCache::new(config.capacity, Duration::from_secs(100));
@@ -156,7 +153,7 @@ impl Mempool {
         let expiration_time = duration_since_epoch() + self.system_transaction_timeout;
 
         let txn_info =
-            MempoolTransaction::new(txn.clone(), expiration_time, tx_state, db_sequence_number);
+            PoolTransaction::new(txn.clone(), expiration_time, tx_state, db_sequence_number);
 
         let status = self.transactions.insert(txn_info);
 
@@ -392,8 +389,8 @@ impl Mempool {
 mod tests {
     use crate::{
         index::TxnPointer,
-        transaction::{self, MempoolTransaction, TimelineState, TxState},
-        transaction_store::TransactionStore,
+        transaction::{self, PoolTransaction, TimelineState, TxState},
+        store::Store,
         ttl_cache::TtlCache,
         CoreMempool,
     };

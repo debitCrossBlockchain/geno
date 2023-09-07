@@ -1,23 +1,23 @@
-use crate::{
-    index::{AccountTransactions, ParkingLotIndex, PriorityIndex, PriorityQueueIter, TTLIndex},
-    transaction::{MempoolTransaction, TxState},
-    ttl_cache::TtlCache,
-};
 use crate::status::{Status, StatusCode};
 use crate::tx_pool_config::TxPoolConfig;
+use crate::{
+    index::{AccountTransactions, ParkingLotIndex, PriorityIndex, PriorityQueueIter, TTLIndex},
+    transaction::{PoolTransaction, TxState},
+    ttl_cache::TtlCache,
+};
 use protobuf::Message;
 use protos::common::ProtocolsMessageType;
-use types::TransactionSignRaw;
 use std::{
     collections::HashMap,
     ops::Bound,
     time::{Duration, SystemTime},
 };
 use tracing::info;
+use types::TransactionSignRaw;
 use utils::timing::duration_since_epoch;
 
-/// TransactionStore is in-memory storage for all transactions in mempool.
-pub struct TransactionStore {
+/// Store is in-memory storage for all transactions in pool.
+pub struct Store {
     transactions: HashMap<String, AccountTransactions>,
     system_ttl_index: TTLIndex,
 
@@ -27,12 +27,12 @@ pub struct TransactionStore {
     capacity_per_user: usize,
 }
 
-impl TransactionStore {
+impl Store {
     pub(crate) fn new(config: &configure::TxPoolConfig) -> Self {
         Self {
             transactions: HashMap::new(),
 
-            system_ttl_index: TTLIndex::new(Box::new(|t: &MempoolTransaction| {
+            system_ttl_index: TTLIndex::new(Box::new(|t: &PoolTransaction| {
                 t.get_expiration_time()
             })),
 
@@ -91,7 +91,7 @@ impl TransactionStore {
     }
 
     /// Insert transaction into TransactionStore. Performs validation checks and updates indexes.
-    pub(crate) fn insert(&mut self, mut txn: MempoolTransaction) -> Status {
+    pub(crate) fn insert(&mut self, mut txn: PoolTransaction) -> Status {
         let tx_hash = txn.get_hash().to_vec();
         let address = txn.get_sender().to_string();
         let sequence_info = txn.get_sequence_info();
@@ -140,13 +140,11 @@ impl TransactionStore {
         if let Some(txns) = self.transactions.get_mut(&address) {
             // capacity check
             if txns.len() >= self.capacity_per_user {
-                return Status::new(StatusCode::TooManyTransactions).with_message(
-                    format!(
-                        "txns length: {} capacity per user: {}",
-                        txns.len(),
-                        self.capacity_per_user,
-                    ),
-                );
+                return Status::new(StatusCode::TooManyTransactions).with_message(format!(
+                    "txns length: {} capacity per user: {}",
+                    txns.len(),
+                    self.capacity_per_user,
+                ));
             }
             txn.state = TxState::Ready;
             if txn.txn.source_type == protos::ledger::TransactionSign_SourceType::P2P {
@@ -202,7 +200,7 @@ impl TransactionStore {
     }
 
     /// Removes transaction from all indexes.
-    fn index_remove(&mut self, txn: &MempoolTransaction) {
+    fn index_remove(&mut self, txn: &PoolTransaction) {
         self.system_ttl_index.remove(txn);
         self.hash_index.remove(txn.get_hash());
     }
