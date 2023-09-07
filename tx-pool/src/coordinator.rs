@@ -113,11 +113,12 @@ pub(crate) async fn coordinator<V>(
     loop {
         ::futures::select! {
             (mut transaction, callback) = client_events.select_next_some() => {
-                handle_client_event(&mut smp, &bounded_executor, transaction, callback).await;
+                bounded_executor.spawn(tasks::process_client_transaction_submission(smp.clone(),transaction,callback)).await;
             },
 
             transactions = broadcast_tx_events.select_next_some() => {
-                handle_broadcast_event(&mut smp, &bounded_executor, transactions).await;
+                // handle_broadcast_event(&mut smp, &bounded_executor, transactions).await;
+                bounded_executor.spawn(tasks::process_transaction_broadcast(smp.clone(),transactions)).await;
             },
 
             request = consensus_requests.select_next_some() => {
@@ -125,47 +126,13 @@ pub(crate) async fn coordinator<V>(
             },
 
             msg = committed_events.select_next_some()=>{
-                handle_commit_notification(&mut smp, &bounded_executor, msg).await;
+                bounded_executor.spawn(tasks::process_committed_transactions(smp.clone(),msg, 0,false)).await;
             }
-
             complete => break,
         }
     }
 }
 
-async fn handle_client_event<V>(
-    smp: &mut SharedMempool<V>,
-    bounded_executor: &BoundedExecutor,
-    mut transaction: TransactionSignRaw,
-    callback: oneshot::Sender<anyhow::Result<(Status, Option<DiscardedVMStatus>)>>,
-) where
-    V: TransactionValidation,
-{
-    
-    bounded_executor
-        .spawn(tasks::process_client_transaction_submission(
-            smp.clone(),
-            transaction,
-            callback,
-        ))
-        .await;
-}
-
-async fn handle_broadcast_event<V>(
-    smp: &mut SharedMempool<V>,
-    bounded_executor: &BoundedExecutor,
-    transactions: Vec<TransactionSignRaw>,
-) where
-    V: TransactionValidation,
-{
-    bounded_executor
-        .spawn(tasks::process_transaction_broadcast(
-            smp.clone(),
-            transactions,
-            // task_start_timer,
-        ))
-        .await;
-}
 
 /// Garbage collect all expired transactions by SystemTTL.
 pub(crate) async fn gc_coordinator(mempool: Arc<RwLock<CoreMempool>>, gc_interval_ms: u64) {
@@ -175,25 +142,6 @@ pub(crate) async fn gc_coordinator(mempool: Arc<RwLock<CoreMempool>>, gc_interva
     }
 }
 
-/// Handle removing committed transactions from local mempool immediately.  This should be done
-/// immediately to ensure broadcasts of committed transactions stop as soon as possible.
-pub(crate) async fn handle_commit_notification<V>(
-    smp: &mut SharedMempool<V>,
-    bounded_executor: &BoundedExecutor,
-    msg: MempoolCommitNotification,
-) where
-    V: TransactionValidation,
-{
-    // Process and time committed user transactions.
-    bounded_executor
-        .spawn(tasks::process_committed_transactions(
-            smp.clone(),
-            msg,
-            0,
-            false,
-        ))
-        .await;
-}
 
 /// broadcast transaction
 pub(crate) async fn broadcast_transaction(
