@@ -235,29 +235,6 @@ impl PeerNetwork {
         }
     }
 
-    pub fn send_msg_to_peer(&self, node_id: String, msg: ProtocolsMessage) -> bool {
-        if let Some(endpoint) = self.get_endpoint_by_node_id(node_id) {
-            return self.send_msg(endpoint, msg);
-        }
-        false
-    }
-
-    pub fn send_msg(&self, endpoint: Endpoint, msg: ProtocolsMessage) -> bool {
-        if let Err(e) = self.writer_msg_sender.try_send((Some(endpoint), msg)) {
-            error!(parent:self.node().span(),"send msg error {}",e);
-            return false;
-        }
-        true
-    }
-
-    pub fn broadcast_msg(&self, msg: ProtocolsMessage) -> bool {
-        if let Err(e) = self.writer_msg_sender.try_send((None, msg)) {
-            error!(parent:self.node().span(),"broadcast msg error {}",e);
-            return false;
-        }
-        true
-    }
-
     fn enable_reading_data(&self) {
         let read_data_thread = {
             let self_clone = self.clone();
@@ -482,53 +459,39 @@ impl PeerNetwork {
         self.protocols.echo_message_handler.get()
     }
 
-    pub fn register_handler(
-        &self,
-        msg_type: ProtocolsMessageType,
-        sender: Sender<(Endpoint, ProtocolsMessage)>,
-    ) {
-        self.protocols
-            .req_resp_handler
-            .write()
-            .entry(msg_type)
-            .or_insert(sender.into());
-    }
-
     fn handle_message(
         &self,
         peer_endpoint: Endpoint,
         message: ProtocolsMessage,
         publisher: &LocalBusPublisher<ProtocolsMessageType, ReturnableProtocolsMessage>,
     ) {
-        match message.get_msg_type() {
-            ProtocolsMessageType::PING
-            | ProtocolsMessageType::HELLO
-            | ProtocolsMessageType::PEERS => {
-                let msg: ReturnableProtocolsMessage = (peer_endpoint, message);
-                if let Some(handle) = self.echo_handler() {
-                    let _ = handle.send(msg);
+        match message.get_action() {
+            ProtocolsActionMessageType::REQUEST | ProtocolsActionMessageType::RESPONSE => {
+                match message.get_msg_type() {
+                    ProtocolsMessageType::PING
+                    | ProtocolsMessageType::HELLO
+                    | ProtocolsMessageType::PEERS => {
+                        let msg: ReturnableProtocolsMessage = (peer_endpoint, message);
+                        if let Some(handle) = self.echo_handler() {
+                            let _ = handle.send(msg);
+                        }
+                    }
+                    _ => {
+                        if let Some(handle) = self
+                            .protocols
+                            .req_resp_handler
+                            .read()
+                            .get(&message.get_msg_type())
+                        {
+                            let msg: ReturnableProtocolsMessage = (peer_endpoint, message);
+                            let _ = handle.send(msg);
+                        }
+                    }
                 }
             }
-            ProtocolsMessageType::CONSENSUS
-            | ProtocolsMessageType::TRANSACTION
-            | ProtocolsMessageType::LEDGER_UPGRADE_NOTIFY => {
+            ProtocolsActionMessageType::BROADCAST => {
                 self.handle_broadcast(peer_endpoint, message, publisher);
             }
-            ProtocolsMessageType::SYNCBLOCK
-            | ProtocolsMessageType::SYNCCHAIN
-            | ProtocolsMessageType::LIGHT
-            | ProtocolsMessageType::TRANSACTION_SYNC => {
-                if let Some(handle) = self
-                    .protocols
-                    .req_resp_handler
-                    .read()
-                    .get(&message.get_msg_type())
-                {
-                    let msg: ReturnableProtocolsMessage = (peer_endpoint, message);
-                    let _ = handle.send(msg);
-                }
-            }
-            _ => {}
         }
     }
 
@@ -583,27 +546,8 @@ impl PeerNetwork {
         self.network_config.clone()
     }
 
-    pub fn conn_ids(&self) -> HashSet<Endpoint> {
-        let mut set = HashSet::default();
-        for it in self.node().connected_endpoints() {
-            set.insert(it);
-        }
-        set
-    }
-
-    pub fn validator_conn_ids(&self) -> HashMap<String, Endpoint> {
-        self.node().validator_connected_endpoints()
-    }
-
     pub fn get_endpoint_by_node_id(&self, node_id: String) -> Option<Endpoint> {
         self.node().get_endpoint_by_node_id(node_id)
-    }
-
-    pub fn update_validators(&self, validator: &[String]) {
-        let hash_set: HashSet<String> = validator.iter().cloned().collect();
-        let mut v = self.validators.write();
-        v.clear();
-        v.clone_from(&hash_set);
     }
 
     pub fn set_remote_info(
@@ -744,17 +688,6 @@ impl PeerNetwork {
         }
     }
 
-    pub fn add_subscriber(
-        &self,
-        topic: ProtocolsMessageType,
-    ) -> LocalBusSubscriber<ProtocolsMessageType, ReturnableProtocolsMessage> {
-        self.bus.add_subscriber(&[topic])
-    }
-
-    pub fn publisher(&self) -> LocalBusPublisher<ProtocolsMessageType, ReturnableProtocolsMessage> {
-        self.bus.publisher()
-    }
-
     pub fn sequence(&self) -> u64 {
         self.sequence
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
@@ -766,5 +699,70 @@ impl PeerNetwork {
 
     pub fn listen_endpoint(&self) -> Endpoint {
         self.node().listen_endpoint
+    }
+
+    pub fn add_subscriber(
+        &self,
+        topic: ProtocolsMessageType,
+    ) -> LocalBusSubscriber<ProtocolsMessageType, ReturnableProtocolsMessage> {
+        self.bus.add_subscriber(&[topic])
+    }
+
+    pub fn publisher(&self) -> LocalBusPublisher<ProtocolsMessageType, ReturnableProtocolsMessage> {
+        self.bus.publisher()
+    }
+
+    pub fn send_msg_to_peer(&self, node_id: String, msg: ProtocolsMessage) -> bool {
+        if let Some(endpoint) = self.get_endpoint_by_node_id(node_id) {
+            return self.send_msg(endpoint, msg);
+        }
+        false
+    }
+
+    pub fn send_msg(&self, endpoint: Endpoint, msg: ProtocolsMessage) -> bool {
+        if let Err(e) = self.writer_msg_sender.try_send((Some(endpoint), msg)) {
+            error!(parent:self.node().span(),"send msg error {}",e);
+            return false;
+        }
+        true
+    }
+
+    pub fn broadcast_msg(&self, msg: ProtocolsMessage) -> bool {
+        if let Err(e) = self.writer_msg_sender.try_send((None, msg)) {
+            error!(parent:self.node().span(),"broadcast msg error {}",e);
+            return false;
+        }
+        true
+    }
+
+    pub fn register_rpc_handler(
+        &self,
+        msg_type: ProtocolsMessageType,
+        sender: Sender<(Endpoint, ProtocolsMessage)>,
+    ) {
+        self.protocols
+            .req_resp_handler
+            .write()
+            .entry(msg_type)
+            .or_insert(sender.into());
+    }
+
+    pub fn conn_ids(&self) -> HashSet<Endpoint> {
+        let mut set = HashSet::default();
+        for it in self.node().connected_endpoints() {
+            set.insert(it);
+        }
+        set
+    }
+
+    pub fn validator_conn_ids(&self) -> HashMap<String, Endpoint> {
+        self.node().validator_connected_endpoints()
+    }
+
+    pub fn update_validators(&self, validator: &[String]) {
+        let hash_set: HashSet<String> = validator.iter().cloned().collect();
+        let mut v = self.validators.write();
+        v.clear();
+        v.clone_from(&hash_set);
     }
 }
