@@ -20,7 +20,7 @@ use std::{collections::HashMap, fmt, pin::Pin, sync::Arc, task::Waker, time::Ins
 use tokio::runtime::Handle;
 /// Struct that owns all dependencies required by shared mempool routines.
 #[derive(Clone)]
-pub(crate) struct SharedMempool<V>
+pub(crate) struct Shared<V>
 where
     V: TransactionValidation + 'static,
 {
@@ -33,16 +33,16 @@ where
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub enum SharedMempoolNotification {
+pub enum Notification {
     PeerStateChange,
     NewTransactions,
     ACK,
     Broadcast,
 }
 
-pub(crate) fn notify_subscribers(
-    event: SharedMempoolNotification,
-    subscribers: &[UnboundedSender<SharedMempoolNotification>],
+pub(crate) fn subscribers(
+    event: Notification,
+    subscribers: &[UnboundedSender<Notification>],
 ) {
     for subscriber in subscribers {
         let _ = subscriber.unbounded_send(event);
@@ -57,30 +57,30 @@ pub struct CommittedTransaction {
 }
 /// Notification from state sync to mempool of commit event.
 /// This notifies mempool to remove committed txns.
-pub struct MempoolCommitNotification {
+pub struct CommitNotification {
     pub transactions: HashMap<String, CommittedTransaction>,
     pub count: u64,
 }
 
 #[derive(Debug)]
-pub struct MempoolCommitResponse {
+pub struct CommitResponse {
     pub success: bool,
     /// The error message if `success` is false.
     pub error_message: Option<String>,
 }
 
-impl MempoolCommitResponse {
-    // Returns a new MempoolCommitResponse without an error.
+impl CommitResponse {
+    // Returns a new CommitResponse without an error.
     pub fn success() -> Self {
-        MempoolCommitResponse {
+        CommitResponse {
             success: true,
             error_message: None,
         }
     }
 
-    // Returns a new MempoolCommitResponse holding the given error message.
+    // Returns a new CommitResponse holding the given error message.
     pub fn error(error_message: String) -> Self {
-        MempoolCommitResponse {
+        CommitResponse {
             success: false,
             error_message: Some(error_message),
         }
@@ -100,7 +100,7 @@ impl fmt::Display for TransactionSummary {
 }
 
 /// Message sent from consensus to mempool.
-pub enum MempoolConsensusRequest {
+pub enum ConsensusRequest {
     /// Request to pull block to submit to consensus.
     GetBlockRequest(
         // max block size
@@ -110,21 +110,21 @@ pub enum MempoolConsensusRequest {
         // transactions to exclude from the requested block
         Vec<TransactionSummary>,
         // callback to respond to
-        oneshot::Sender<Result<MempoolConsensusResponse>>,
+        oneshot::Sender<Result<ConsensusResponse>>,
     ),
     /// Notifications about *rejected* committed txns.
     RejectNotification(
         // rejected transactions from consensus
         Vec<TransactionSummary>,
         // callback to respond to
-        oneshot::Sender<Result<MempoolConsensusResponse>>,
+        oneshot::Sender<Result<ConsensusResponse>>,
     ),
 }
 
-impl fmt::Display for MempoolConsensusRequest {
+impl fmt::Display for ConsensusRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let payload = match self {
-            MempoolConsensusRequest::GetBlockRequest(
+            ConsensusRequest::GetBlockRequest(
                 block_size,
                 contact_size,
                 excluded_txns,
@@ -139,7 +139,7 @@ impl fmt::Display for MempoolConsensusRequest {
                     block_size, txns_str
                 )
             }
-            MempoolConsensusRequest::RejectNotification(rejected_txns, _) => {
+            ConsensusRequest::RejectNotification(rejected_txns, _) => {
                 let mut txns_str = "".to_string();
                 for tx in rejected_txns.iter() {
                     txns_str += &format!("{} ", tx);
@@ -152,7 +152,7 @@ impl fmt::Display for MempoolConsensusRequest {
 }
 
 /// Response sent from mempool to consensus.
-pub enum MempoolConsensusResponse {
+pub enum ConsensusResponse {
     /// Block to submit to consensus
     GetBlockResponse(Vec<TransactionSignRaw>),
     CommitResponse(),
@@ -162,17 +162,17 @@ pub type SubmissionStatus = (Status, Option<DiscardedVMStatus>);
 
 pub type SubmissionStatusBundle = (TransactionSignRaw, SubmissionStatus);
 
-pub type MempoolClientSender =
+pub type ClientSender =
     mpsc::UnboundedSender<(TransactionSignRaw, oneshot::Sender<Result<SubmissionStatus>>)>;
 
-pub type MempoolClientReceiver =
+pub type ClientReceiver =
     mpsc::UnboundedReceiver<(TransactionSignRaw, oneshot::Sender<Result<SubmissionStatus>>)>;
 
-pub type MempoolConsensusSender = mpsc::Sender<MempoolConsensusRequest>;
-pub type MempoolConsensusReceiver = mpsc::Receiver<MempoolConsensusRequest>;
+// pub type ConsensusSender = mpsc::Sender<ConsensusRequest>;
+// pub type ConsensusReceiver = mpsc::Receiver<ConsensusRequest>;
 
-pub type MempoolCommitNotificationSender = mpsc::Sender<MempoolCommitNotification>;
-pub type MempoolCommitNotificationReceiver = mpsc::Receiver<MempoolCommitNotification>;
+pub type CommitNotificationSender = mpsc::Sender<CommitNotification>;
+pub type CommitNotificationReceiver = mpsc::Receiver<CommitNotification>;
 
-pub type MempoolBroadCastTxSender = mpsc::UnboundedSender<Vec<TransactionSignRaw>>;
-pub type MempoolBroadCastTxReceiver = mpsc::UnboundedReceiver<Vec<TransactionSignRaw>>;
+pub type BroadCastTxSender = mpsc::UnboundedSender<Vec<TransactionSignRaw>>;
+pub type BroadCastTxReceiver = mpsc::UnboundedReceiver<Vec<TransactionSignRaw>>;

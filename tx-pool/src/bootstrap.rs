@@ -1,46 +1,155 @@
-// Copyright (c) The  Core Contributors
-// SPDX-License-Identifier: Apache-2.0
-
-//! Tasks that are executed by coordinators (short-lived compared to coordinators)
-
-use crate::coordinator::{broadcast_transaction, coordinator, gc_coordinator};
-use crate::{CoreMempool, TimelineState, TxState, TxnPointer};
 use crate::status::{Status, StatusCode};
-use crate::tx_validator::{
-    get_account_nonce_banace, DiscardedVMStatus, TransactionValidation,
-};
+use crate::tx_validator::TxValidator;
+use crate::tx_validator::{get_account_nonce_banace, DiscardedVMStatus, TransactionValidation};
 use crate::types::{
-    notify_subscribers, MempoolConsensusRequest, MempoolConsensusResponse, SharedMempool,
-    SharedMempoolNotification, SubmissionStatusBundle, TransactionSummary,MempoolConsensusReceiver,MempoolBroadCastTxReceiver,
-    MempoolCommitNotificationReceiver,MempoolClientReceiver,MempoolCommitNotification
+    BroadCastTxReceiver, ClientReceiver, CommitNotification, CommitNotificationReceiver, Shared,
+    SubmissionStatusBundle,
 };
+use crate::TxPoolInstanceRef;
 use crate::TEST_TXPOOL_INCHANNEL_AND_SWPAN;
+use crate::{CoreMempool, TxState, TxnPointer};
 use anyhow::Result;
-use chrono::Local;
-use futures::task::Spawn;
-use futures::{channel::oneshot, stream::FuturesUnordered};
+use futures::future::{Future, FutureExt};
+use futures::{
+    channel::{mpsc, oneshot},
+    stream::{select_all, FuturesUnordered},
+    StreamExt,
+};
+use network::PeerNetwork;
 use parking_lot::{Mutex, Once, RawRwLock, RwLock};
 use protobuf::Message;
 use protos::ledger::TransactionSign;
 use rayon::prelude::*;
-use types::TransactionSignRaw;
 use std::{
     cmp,
     collections::{HashMap, HashSet},
     sync::Arc,
     time::{Duration, Instant},
 };
-use crate::tx_validator::TxValidator;
-use tracing::*;
-use utils::timing::Timestamp;
 use tokio::runtime::{Builder, Handle, Runtime};
-use crate::TxPoolInstanceRef;
-use network::PeerNetwork;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::task::JoinHandle;
+use tokio::time::interval;
+use tokio_stream::wrappers::IntervalStream;
+use tracing::*;
+use types::TransactionSignRaw;
 pub type SubmissionStatus = (Status, Option<DiscardedVMStatus>);
+
+#[derive(Clone, Debug)]
+pub struct BoundedExecutor {
+    semaphore: Arc<Semaphore>,
+    executor: Handle,
+}
+
+impl BoundedExecutor {
+    /// Create a new `BoundedExecutor` from an existing tokio [`Handle`]
+    /// with a maximum concurrent task capacity of `capacity`.
+    pub fn new(capacity: usize, executor: Handle) -> Self {
+        let semaphore = Arc::new(Semaphore::new(capacity));
+        Self {
+            semaphore,
+            executor,
+        }
+    }
+
+    /// Spawn a [`Future`] on the `BoundedExecutor`. This function is async and
+    /// will block if the executor is at capacity until one of the other spawned
+    /// futures completes. This function returns a [`JoinHandle`] that the caller
+    /// can `.await` on for the results of the [`Future`].
+    pub async fn spawn<F>(&self, f: F) -> JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        let permit = self.semaphore.clone().acquire_owned().await.unwrap();
+        self.spawn_with_permit(f, permit)
+    }
+
+    /// Try to spawn a [`Future`] on the `BoundedExecutor`. If the `BoundedExecutor`
+    /// is at capacity, this will return an `Err(F)`, passing back the future the
+    /// caller attempted to spawn. Otherwise, this will spawn the future on the
+    /// executor and send back a [`JoinHandle`] that the caller can `.await` on
+    /// for the results of the [`Future`].
+    pub fn try_spawn<F>(&self, f: F) -> Result<JoinHandle<F::Output>, F>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        match self.semaphore.clone().try_acquire_owned().ok() {
+            Some(permit) => Ok(self.spawn_with_permit(f, permit)),
+            None => Err(f),
+        }
+    }
+
+    fn spawn_with_permit<F>(
+        &self,
+        f: F,
+        spawn_permit: OwnedSemaphorePermit,
+    ) -> JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        // Release the permit back to the semaphore when this task completes.
+        let f = f.map(move |ret| {
+            drop(spawn_permit);
+            ret
+        });
+        self.executor.spawn(f)
+    }
+}
+
+/// Coordinator that handles inbound network events and outbound txn broadcasts.
+pub(crate) async fn coordinator<V>(
+    mut smp: Shared<V>,
+    executor: Handle,
+    mut client_events: ClientReceiver,
+    mut broadcast_tx_events: BroadCastTxReceiver,
+    mut committed_events: CommitNotificationReceiver,
+) where
+    V: TransactionValidation,
+{
+    // Use a BoundedExecutor to restrict only `workers_available` concurrent
+    // worker tasks that can process incoming transactions.
+    let workers_available = smp.config.shared_mempool_max_concurrent_inbound_syncs;
+    let bounded_executor = BoundedExecutor::new(workers_available, executor.clone());
+
+    loop {
+        ::futures::select! {
+            (mut transaction, callback) = client_events.select_next_some() => {
+                bounded_executor.spawn(process_client_transaction_submission(smp.clone(),transaction,callback)).await;
+            },
+            transactions = broadcast_tx_events.select_next_some() => {
+                // handle_broadcast_event(&mut smp, &bounded_executor, transactions).await;
+                bounded_executor.spawn(process_transaction_broadcast(smp.clone(),transactions)).await;
+            },
+            msg = committed_events.select_next_some()=>{
+                bounded_executor.spawn(process_committed_transactions(smp.clone(),msg, 0,false)).await;
+            }
+            complete => break,
+        }
+    }
+}
+
+/// Garbage collect all expired transactions by SystemTTL.
+pub(crate) async fn gc_coordinator(mempool: Arc<RwLock<CoreMempool>>, gc_interval_ms: u64) {
+    let mut interval = IntervalStream::new(interval(Duration::from_millis(gc_interval_ms)));
+    while let Some(_interval) = interval.next().await {
+        mempool.write().gc();
+    }
+}
+
+/// broadcast transaction
+pub(crate) async fn broadcast_transaction(pool: Arc<RwLock<CoreMempool>>, tx_interval: u64) {
+    let mut interval = IntervalStream::new(interval(Duration::from_millis(tx_interval)));
+    while let Some(_interval) = interval.next().await {
+        pool.write().broadcast_transaction();
+    }
+}
 
 /// Processes transactions directly submitted by client.
 pub(crate) async fn process_client_transaction_submission<V>(
-    smp: SharedMempool<V>,
+    smp: Shared<V>,
     mut transaction: TransactionSignRaw,
     callback: oneshot::Sender<Result<SubmissionStatus>>,
 ) where
@@ -55,14 +164,10 @@ pub(crate) async fn process_client_transaction_submission<V>(
     }
 }
 
-fn is_txn_retryable(result: SubmissionStatus) -> bool {
-    result.0.code == StatusCode::IsFull
-}
-
 /// Submits a list of SignedTransaction to the local mempool
 /// and returns a vector containing AdmissionControlStatus.
 pub(crate) fn process_incoming_transactions<V>(
-    smp: &SharedMempool<V>,
+    smp: &Shared<V>,
     transactions: Vec<TransactionSignRaw>,
     tx_state: TxState,
 ) -> Vec<SubmissionStatusBundle>
@@ -81,10 +186,6 @@ where
         return statuses;
     }
 
-    let start = Instant::now();
-    let start_storage_read = Instant::now();
-    let tx_size = transactions.len();
-
     // Track latency: fetching seq number
     let nonce_and_banace_vec = transactions
         .par_iter()
@@ -95,11 +196,6 @@ where
             })
         })
         .collect::<Vec<_>>();
-
-    let storage_read_latency = start_storage_read.elapsed();
-    // counters::PROCESS_TXN_BREAKDOWN_LATENCY
-    //     .with_label_values(&[counters::FETCH_SEQ_NUM_LABEL])
-    //     .observe(storage_read_latency.as_secs_f64() / transactions.len() as f64);
 
     let transactions: Vec<_> = transactions
         .into_iter()
@@ -149,7 +245,6 @@ where
         .collect();
 
     // Track latency: VM validation
-    let start_verify_sign = Instant::now();
     let validation_results = transactions
         .par_iter()
         .map(|t| smp.validator.read().validate_transaction(&t.0))
@@ -174,17 +269,12 @@ where
                     Some(validation_status) => {
                         statuses.push((
                             transaction.clone(),
-                            (
-                                Status::new(StatusCode::VmError),
-                                Some(validation_status),
-                            ),
+                            (Status::new(StatusCode::VmError), Some(validation_status)),
                         ));
                     }
                 }
             }
         }
-
-        // insert_tx_timer.stop_and_record();
     }
 
     statuses
@@ -192,18 +282,18 @@ where
 
 /// Processes transactions from other nodes.
 pub(crate) async fn process_transaction_broadcast<V>(
-    smp: SharedMempool<V>,
+    smp: Shared<V>,
     transactions: Vec<TransactionSignRaw>,
 ) where
     V: TransactionValidation,
-{ 
+{
     let results = process_incoming_transactions(&smp, transactions, TxState::NotReady);
 }
 
 /// Remove transactions that are committed (or rejected) so that we can stop broadcasting them.
 pub(crate) async fn process_committed_transactions<V>(
-    smp: SharedMempool<V>,
-    msg: MempoolCommitNotification,
+    smp: Shared<V>,
+    msg: CommitNotification,
     block_timestamp_usecs: u64,
     is_rejected: bool,
 ) where
@@ -227,98 +317,11 @@ pub(crate) async fn process_committed_transactions<V>(
     );
 }
 
-pub(crate) fn process_consensus_request<V: TransactionValidation>(
-    smp: &SharedMempool<V>,
-    req: MempoolConsensusRequest,
-) {
-    let (resp, callback) = match req {
-        MempoolConsensusRequest::GetBlockRequest(
-            max_block_size,
-            max_contract_size,
-            transactions,
-            callback,
-        ) => {
-            let exclude_transactions: HashSet<TxnPointer> = transactions
-                .iter()
-                .map(|txn| (txn.sender.clone(), txn.sequence_number))
-                .collect();
-            let mut txns;
-            {
-                let mempool = smp.mempool.write();
-                // gc before pulling block as extra protection against txns that may expire in consensus
-                // Note: this gc operation relies on the fact that consensus uses the system time to determine block timestamp
-                // let curr_time = diem_infallible::duration_since_epoch();
-                // mempool.gc_by_expiration_time(curr_time);
-                let block_size = cmp::max(max_block_size, 1);
-                txns = mempool.get_block(block_size, max_contract_size, &HashMap::new());
-            }
-
-            let pulled_block = txns.drain(..).map(TransactionSignRaw::into).collect();
-            (
-                MempoolConsensusResponse::GetBlockResponse(pulled_block),
-                callback,
-            )
-        }
-        MempoolConsensusRequest::RejectNotification(transactions, callback) => {
-            (MempoolConsensusResponse::CommitResponse(), callback)
-        }
-    };
-
-    if callback.send(Ok(resp)).is_err() {
-        error!("process_consensus_request callback send error");
-    }
-}
-
-
-/// Bootstrap of SharedMempool.
-/// Creates a separate Tokio Runtime that runs the following routines:
-///   - outbound_sync_task (task that periodically broadcasts transactions to peers).
-///   - inbound_network_task (task that handles inbound mempool messages and network events).
-///   - gc_task (task that performs GC of all expired transactions by SystemTTL).
-pub(crate) fn start_shared_mempool<V>(
-    executor: &Handle,
-    config: &configure::TxPoolConfig,
-    mempool: Arc<RwLock<CoreMempool>>,
-    client_events: MempoolClientReceiver,
-    broadcast_tx_events: MempoolBroadCastTxReceiver,
-    consensus_requests: MempoolConsensusReceiver,
-    committed_events: MempoolCommitNotificationReceiver,
-    validator: Arc<RwLock<V>>,
-) where
-    V: TransactionValidation + 'static,
-{
-    let smp = SharedMempool {
-        mempool: mempool.clone(),
-        config: config.clone(), 
-        validator,
-    };
-
-    executor.spawn(coordinator(
-        smp,
-        executor.clone(),
-        client_events,
-        broadcast_tx_events,
-        consensus_requests,
-        committed_events,
-    ));
-
-    executor.spawn(gc_coordinator(
-        mempool.clone(),
-        config.system_transaction_gc_interval_ms,
-    ));
-
-    executor.spawn(broadcast_transaction(
-        mempool.clone(),
-        config.broadcast_transaction_interval_ms,
-    ));
-}
-
 pub fn bootstrap(
     config: &configure::TxPoolConfig,
-    client_events: MempoolClientReceiver,
-    broadcast_tx_events: MempoolBroadCastTxReceiver,
-    consensus_requests: MempoolConsensusReceiver,
-    committed_events: MempoolCommitNotificationReceiver,
+    client_events: ClientReceiver,
+    broadcast_tx_events: BroadCastTxReceiver,
+    committed_events: CommitNotificationReceiver,
     network: PeerNetwork,
 ) -> Runtime {
     let runtime = Builder::new_multi_thread()
@@ -330,17 +333,30 @@ pub fn bootstrap(
     {
         mempool.write().reinit(config, network);
     }
-    let vm_validator = Arc::new(RwLock::new(TxValidator::new()));
-    start_shared_mempool(
-        runtime.handle(),
-        config,
-        mempool,
+    let validator = Arc::new(RwLock::new(TxValidator::new()));
+    let executor = runtime.handle();
+
+    let smp = Shared {
+        mempool: mempool.clone(),
+        config: config.clone(),
+        validator,
+    };
+
+    executor.spawn(coordinator(
+        smp,
+        executor.clone(),
         client_events,
         broadcast_tx_events,
-        consensus_requests,
         committed_events,
-        vm_validator,
-        // vec![],
-    );
+    ));
+    executor.spawn(gc_coordinator(
+        mempool.clone(),
+        config.system_transaction_gc_interval_ms,
+    ));
+    executor.spawn(broadcast_transaction(
+        mempool.clone(),
+        config.broadcast_transaction_interval_ms,
+    ));
+
     runtime
 }
