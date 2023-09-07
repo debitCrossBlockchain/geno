@@ -1,4 +1,4 @@
-use crate::CoreMempool;
+use crate::Pool;
 use crate::status::Status;
 use crate::config::TxPoolConfig;
 use crate::tx_validator::{DiscardedVMStatus, TransactionValidation};
@@ -19,7 +19,7 @@ pub(crate) struct Shared<V>
 where
     V: TransactionValidation + 'static,
 {
-    pub mempool: Arc<RwLock<CoreMempool>>,
+    pub mempool: Arc<RwLock<Pool>>,
     pub config: configure::TxPoolConfig,
     // pub network_senders: HashMap<NodeNetworkId, MempoolNetworkSender>,
     pub validator: Arc<RwLock<V>>,

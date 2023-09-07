@@ -3,7 +3,6 @@
 use crate::status::{Status, StatusCode};
 use crate::config::TxPoolConfig;
 use crate::types::CommittedTransaction;
-use crate::CoreMempool;
 use crate::{
     // counters,
     index::{PriorityIndex, TxnPointer},
@@ -26,11 +25,11 @@ use tracing::*;
 use types::TransactionSignRaw;
 use utils::timing::duration_since_epoch;
 pub struct Pool {
-    // Stores the metadata of all transactions in mempool (of all states).
+    // Stores the metadata of all transactions in pool (of all states).
     transactions: Store,
 
     sequence_number_cache: HashMap<String, u64>,
-    // For each transaction, an entry with a timestamp is added when the transaction enters mempool.
+    // For each transaction, an entry with a timestamp is added when the transaction enters pool.
     // This is used to measure e2e latency of transactions in the system, as well as the time it
     // takes to pick it up by consensus.
     pub(crate) metrics_cache: TtlCache<(String, u64), SystemTime>,
