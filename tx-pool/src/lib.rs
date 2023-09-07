@@ -12,7 +12,6 @@ mod ttl_cache;
 
 pub mod types;
 pub use bootstrap::bootstrap;
-mod queues;
 pub mod status;
 pub mod config;
 pub mod tx_validator;
