@@ -302,4 +302,24 @@ impl EvmExecutor {
             bytecode_hash: (code_hash != KECCAK_EMPTY).then_some(code_hash),
         }
     }
+
+    pub fn call(
+        &mut self,
+        transaction: &TransactionSignRaw,
+    ) -> std::result::Result<ResultAndState, VmError> {
+        Self::fill_tx_env(&mut self.evm.env.tx, &transaction)?;
+
+        // main execution.
+        let out = self.evm.transact();
+        let ret_and_state = match out {
+            Ok(ret_and_state) => ret_and_state,
+            Err(e) => {
+                return Err(VmError::VMExecuteError {
+                    hash: transaction.tx.hash_hex(),
+                    message: format!("{:?}", e),
+                });
+            }
+        };
+        Ok(ret_and_state)
+    }
 }
