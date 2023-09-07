@@ -23,6 +23,8 @@ members = [
     "storage/state-store",
     "jsonrpc",
     "catchup",
+    "consensus/consensus-pbft",
+    "consensus/ledger-upgrade",
 ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

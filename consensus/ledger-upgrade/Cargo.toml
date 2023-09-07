@@ -1,0 +1,30 @@
+[package]
+name = "ledger-upgrade"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+crate-type = ["lib"]
+
+
+[dependencies]
+network = { path = "../../network", version = "0.1.0" }
+protos = { path = "../../protos", version = "0.1.0" }
+msp = { path = "../../msp", version = "0.1.0" }
+utils = { path = "../../utils", version = "0.1.0" }
+configure = { path = "../../configure", version = "0.1.0" }
+tx-pool = { path = "../../tx-pool", version = "0.1.0" }
+protobuf = { version = "2.27.1", features = ["with-bytes"] }
+parking_lot = "0.11"
+fxhash = "0.2"
+lazy_static = "1.4.0"
+bytes = "1"
+async-trait = "0.1"
+chrono = "0.4.19"
+serde_json = "1.0.64"
+tokio = "1.17.0"
+futures = "0.3.12"
+anyhow = "1.0.38"
+itertools = "0.8.2"
+tracing = "0.1.29"
+crossbeam-channel = "0.5"

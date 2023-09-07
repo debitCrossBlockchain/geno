@@ -5,10 +5,7 @@ use protos::common::{
     ErrCode, HelloMessage, HelloResponseMessage, Peer, Peers, ProtocolsActionMessageType,
     ProtocolsMessage, ProtocolsMessageType,
 };
-use std::{
-    net::{self, SocketAddr},
-    str::FromStr,
-};
+use std::{net::SocketAddr, str::FromStr};
 use tracing::*;
 ///
 pub struct HelloMessageHandler;
