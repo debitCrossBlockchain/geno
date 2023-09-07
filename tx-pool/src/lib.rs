@@ -12,7 +12,7 @@ mod ttl_cache;
 
 pub mod types;
 pub use bootstrap::bootstrap;
-mod message_queues;
+mod queues;
 pub mod status;
 pub mod tx_pool_channel;
 pub mod tx_pool_config;

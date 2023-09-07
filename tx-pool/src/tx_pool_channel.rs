@@ -12,7 +12,7 @@ use std::{
 };
 use parking_lot::{Mutex, Once, RawRwLock, RwLock};
 use std::num::NonZeroUsize;
-use crate::message_queues::PerKeyQueue;
+use crate::queues::PerKeyQueue;
 
 /// SharedState is a data structure private to this module which is
 /// shared by the `Receiver` and any `Sender`s.
