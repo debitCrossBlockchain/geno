@@ -2,7 +2,7 @@
 // Increase recursion limit to allow for use of select! macro.
 #![recursion_limit = "1024"]
 
-mod tx_verify_pool;
+mod verify_pool;
 
 mod index;
 pub mod pool;
@@ -12,7 +12,7 @@ pub mod types;
 pub use bootstrap::bootstrap;
 pub mod status;
 pub mod config;
-pub mod tx_validator;
+pub mod validator;
 
 pub mod bootstrap;
 

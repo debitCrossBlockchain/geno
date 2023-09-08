@@ -1,18 +1,19 @@
+use crate::pool::Pool;
 use crate::status::{Status, StatusCode};
-use crate::tx_validator::TxValidator;
-use crate::tx_validator::{get_account_nonce_banace, DiscardedVMStatus, TransactionValidation};
+use crate::transaction::TxState;
+use crate::validator::TxValidator;
+use crate::validator::{get_account_nonce_banace, TransactionValidation, VMStatus};
 use crate::types::{
     BroadCastTxReceiver, ClientReceiver, CommitNotification, CommitNotificationReceiver, Shared,
     SubmissionStatusBundle,
 };
-use crate::transaction::TxState;
-use crate::{TEST_TXPOOL_INCHANNEL_AND_SWPAN, TxPoolInstanceRef};
-use crate::pool::Pool;
+use crate::{TxPoolInstanceRef, TEST_TXPOOL_INCHANNEL_AND_SWPAN};
 use anyhow::Result;
 use futures::channel::oneshot;
 use futures::future::{Future, FutureExt};
 use futures::StreamExt;
 use network::PeerNetwork;
+use parking_lot::RwLock;
 use rayon::prelude::*;
 use std::{
     sync::Arc,
@@ -25,8 +26,7 @@ use tokio::time::interval;
 use tokio_stream::wrappers::IntervalStream;
 use tracing::*;
 use types::TransactionSignRaw;
-use parking_lot::RwLock;
-pub type SubmissionStatus = (Status, Option<DiscardedVMStatus>);
+pub type SubmissionStatus = (Status, Option<VMStatus>);
 #[derive(Clone, Debug)]
 pub struct BoundedExecutor {
     semaphore: Arc<Semaphore>,
@@ -201,9 +201,7 @@ where
                                 t,
                                 (
                                     Status::new(StatusCode::VmError),
-                                    Some(
-                                        DiscardedVMStatus::INSUFFICIENT_BALANCE_FOR_TRANSACTION_FEE,
-                                    ),
+                                    Some(VMStatus::INSUFFICIENT_BALANCE_FOR_TRANSACTION_FEE),
                                 ),
                             ));
                         } else {
@@ -217,7 +215,7 @@ where
                         t,
                         (
                             Status::new(StatusCode::VmError),
-                            Some(DiscardedVMStatus::SEQUENCE_NUMBER_TOO_OLD),
+                            Some(VMStatus::SEQUENCE_NUMBER_TOO_OLD),
                         ),
                     ));
                 }
@@ -227,7 +225,7 @@ where
                     t,
                     (
                         Status::new(StatusCode::VmError),
-                        Some(DiscardedVMStatus::RESOURCE_DOES_NOT_EXIST),
+                        Some(VMStatus::RESOURCE_DOES_NOT_EXIST),
                     ),
                 ));
             }
@@ -238,7 +236,7 @@ where
     // Track latency: VM validation
     let validation_results = transactions
         .par_iter()
-        .map(|t| smp.validator.read().validate_transaction(&t.0))
+        .map(|t| smp.validator.read().validate(&t.0))
         .collect::<Vec<_>>();
     {
         let mut mempool = smp.mempool.write();

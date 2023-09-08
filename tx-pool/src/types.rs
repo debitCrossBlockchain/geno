@@ -1,15 +1,15 @@
 use crate::pool::Pool;
 use crate::status::Status;
-use crate::tx_validator::{DiscardedVMStatus, TransactionValidation};
+use crate::validator::{TransactionValidation, VMStatus};
 use anyhow::Result;
 use futures::{
     channel::{mpsc, mpsc::UnboundedSender, oneshot},
     future::Future,
     task::{Context, Poll},
 };
-use types::TransactionSignRaw;
-use std::{collections::HashMap, fmt, sync::Arc};
 use parking_lot::RwLock;
+use std::{collections::HashMap, fmt, sync::Arc};
+use types::TransactionSignRaw;
 
 /// Struct that owns all dependencies required by shared mempool routines.
 #[derive(Clone)]
@@ -30,10 +30,7 @@ pub enum Notification {
     Broadcast,
 }
 
-pub(crate) fn subscribers(
-    event: Notification,
-    subscribers: &[UnboundedSender<Notification>],
-) {
+pub(crate) fn subscribers(event: Notification, subscribers: &[UnboundedSender<Notification>]) {
     for subscriber in subscribers {
         let _ = subscriber.unbounded_send(event);
     }
@@ -114,12 +111,7 @@ pub enum ConsensusRequest {
 impl fmt::Display for ConsensusRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let payload = match self {
-            ConsensusRequest::GetBlockRequest(
-                block_size,
-                _contact_size,
-                excluded_txns,
-                _,
-            ) => {
+            ConsensusRequest::GetBlockRequest(block_size, _contact_size, excluded_txns, _) => {
                 let mut txns_str = "".to_string();
                 for tx in excluded_txns.iter() {
                     txns_str += &format!("{} ", tx);
@@ -148,12 +140,18 @@ pub enum ConsensusResponse {
     CommitResponse(),
 }
 
-pub type SubmissionStatus = (Status, Option<DiscardedVMStatus>);
+pub type SubmissionStatus = (Status, Option<VMStatus>);
 
 pub type SubmissionStatusBundle = (TransactionSignRaw, SubmissionStatus);
 
-pub type ClientSender = mpsc::UnboundedSender<(TransactionSignRaw, oneshot::Sender<Result<SubmissionStatus>>)>;
-pub type ClientReceiver = mpsc::UnboundedReceiver<(TransactionSignRaw, oneshot::Sender<Result<SubmissionStatus>>)>;
+pub type ClientSender = mpsc::UnboundedSender<(
+    TransactionSignRaw,
+    oneshot::Sender<Result<SubmissionStatus>>,
+)>;
+pub type ClientReceiver = mpsc::UnboundedReceiver<(
+    TransactionSignRaw,
+    oneshot::Sender<Result<SubmissionStatus>>,
+)>;
 pub type CommitNotificationSender = mpsc::Sender<CommitNotification>;
 pub type CommitNotificationReceiver = mpsc::Receiver<CommitNotification>;
 pub type BroadCastTxSender = mpsc::UnboundedSender<Vec<TransactionSignRaw>>;
