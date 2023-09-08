@@ -1,4 +1,3 @@
-
 use crate::status::{Status, StatusCode};
 use crate::{
     index::{AccountTransactions, PriorityIndex, PriorityQueueIter, TTLIndex},
@@ -6,13 +5,10 @@ use crate::{
 };
 use protobuf::Message;
 
-use std::{
-    collections::HashMap,
-    ops::Bound,
-};
+use std::time::Duration;
+use std::{collections::HashMap, ops::Bound};
 use tracing::info;
 use types::TransactionSignRaw;
-use std::time::Duration;
 use utils::timing::duration_since_epoch;
 
 /// Store is in-memory storage for all transactions in pool.
@@ -100,22 +96,21 @@ impl Store {
         // we allow increase in gas price to speed up process.
         // ignores the case transaction hash is same for retrying submit transaction.
         if let Some(txns) = self.transactions.get_mut(&address) {
-            if let Some(current_version) = txns.get_mut(&sequence_info.transaction_sequence_number)
-            {
+            if let Some(current_version) = txns.get_mut(&sequence_info.seq) {
                 // already have same tx
                 if current_version.get_hash() == txn.get_hash() {
                     return Status::new(StatusCode::Pending);
                 }
 
                 if current_version.get_gas_price() < txn.get_gas_price() {
-                    if let Some(txn) = txns.remove(&txn.get_sequence_number()) {
+                    if let Some(txn) = txns.remove(&txn.get_seq()) {
                         self.index_remove(&txn);
                     }
                 } else {
                     return Status::new(StatusCode::InvalidSeqNumber).with_message(
                         format!(
                             "this transacetion's nonce({}) is too old,you need update nonce,sender({}) have submitted a transaction({}) witch is same nonce",
-                            sequence_info.transaction_sequence_number,
+                            sequence_info.seq,
                             address,
                             String::from_utf8_lossy(current_version.get_hash().as_ref())
                         ),
@@ -150,12 +145,10 @@ impl Store {
                 txn.state = TxState::Sended;
             }
 
-            self.hash_index.insert(
-                txn.get_hash().to_vec(),
-                (address, sequence_info.transaction_sequence_number),
-            );
+            self.hash_index
+                .insert(txn.get_hash().to_vec(), (address, sequence_info.seq));
             self.system_ttl_index.insert(&txn);
-            txns.insert(sequence_info.transaction_sequence_number, txn);
+            txns.insert(sequence_info.seq, txn);
         }
 
         let status = Status::new(StatusCode::Accepted);
@@ -209,26 +202,24 @@ impl Store {
         let index = &mut self.system_ttl_index;
         let mut gc_txns = index.gc(now);
         // sort the expired txns by order of sequence number per account
-        gc_txns.sort_by_key(|key| (key.address.clone(), key.sequence_number));
+        gc_txns.sort_by_key(|key| (key.address.clone(), key.seq));
         let mut gc_iter = gc_txns.iter().peekable();
 
         while let Some(key) = gc_iter.next() {
             if let Some(txns) = self.transactions.get_mut(&key.address) {
-                let _park_range_start = Bound::Excluded(key.sequence_number);
+                let _park_range_start = Bound::Excluded(key.seq);
                 let _park_range_end = gc_iter
                     .peek()
                     .filter(|next_key| key.address == next_key.address)
-                    .map_or(Bound::Unbounded, |next_key| {
-                        Bound::Excluded(next_key.sequence_number)
-                    });
+                    .map_or(Bound::Unbounded, |next_key| Bound::Excluded(next_key.seq));
 
-                if let Some(txn) = txns.remove(&key.sequence_number) {
+                if let Some(txn) = txns.remove(&key.seq) {
                     // remove txn index
                     self.index_remove(&txn);
                     info!(
                         "gc tx {} {} {}",
                         txn.get_sender(),
-                        txn.get_sequence_number(),
+                        txn.get_seq(),
                         String::from_utf8(txn.get_hash().to_vec()).unwrap(),
                     );
                 }
@@ -254,7 +245,7 @@ impl Store {
                     }
                     let is_contract = t.is_contract();
 
-                    let tx_sequence = t.get_sequence_number();
+                    let tx_sequence = t.get_seq();
                     index += 1;
 
                     tracing_seqs

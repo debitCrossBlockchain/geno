@@ -1,4 +1,3 @@
-
 /// This module provides various indexes used by pool.
 use itertools::Itertools;
 
@@ -46,10 +45,10 @@ impl PriorityIndex {
 
     fn make_key(&self, txn: &PoolTransaction) -> OrderedQueueKey {
         OrderedQueueKey {
-            gas_ranking_score: txn.get_tx().tx.gas_price(),
+            gas_ranking_score: txn.get_gas_price(),
             expiration_time: txn.get_expiration_time(),
             address: txn.get_sender().to_string(),
-            sequence_number: txn.get_sequence_number(),
+            seq: txn.get_seq(),
         }
     }
 
@@ -67,7 +66,7 @@ pub struct OrderedQueueKey {
     pub gas_ranking_score: u128,
     pub expiration_time: Duration,
     pub address: String,
-    pub sequence_number: u64,
+    pub seq: u64,
 }
 
 impl PartialOrd for OrderedQueueKey {
@@ -86,7 +85,7 @@ impl Ord for OrderedQueueKey {
             Ordering::Equal => {}
             ordering => return ordering,
         }
-        self.sequence_number.cmp(&other.sequence_number).reverse()
+        self.seq.cmp(&other.seq).reverse()
     }
 }
 
@@ -124,7 +123,7 @@ impl TTLIndex {
         let ttl_key = TTLOrderingKey {
             expiration_time: now,
             address: String::from("000000000"),
-            sequence_number: 0,
+            seq: 0,
         };
 
         let mut active = self.data.split_off(&ttl_key);
@@ -138,7 +137,7 @@ impl TTLIndex {
         TTLOrderingKey {
             expiration_time: (self.get_expiration_time)(txn),
             address: txn.get_sender().to_string(),
-            sequence_number: txn.get_sequence_number(),
+            seq: txn.get_seq(),
         }
     }
 
@@ -152,7 +151,7 @@ impl TTLIndex {
 pub struct TTLOrderingKey {
     pub expiration_time: Duration,
     pub address: String,
-    pub sequence_number: u64,
+    pub seq: u64,
 }
 
 /// Be very careful with this, to not break the partial ordering.
@@ -161,9 +160,7 @@ pub struct TTLOrderingKey {
 impl Ord for TTLOrderingKey {
     fn cmp(&self, other: &TTLOrderingKey) -> Ordering {
         match self.expiration_time.cmp(&other.expiration_time) {
-            Ordering::Equal => {
-                (&self.address, self.sequence_number).cmp(&(&other.address, other.sequence_number))
-            }
+            Ordering::Equal => (&self.address, self.seq).cmp(&(&other.address, other.seq)),
             ordering => ordering,
         }
     }
@@ -190,7 +187,7 @@ impl ParkingLotIndex {
 
     pub(crate) fn insert(&mut self, txn: &PoolTransaction) {
         let sender = txn.get_sender();
-        let sequence_number = txn.get_sequence_number();
+        let sequence_number = txn.get_seq();
         let is_new_entry = match self.data.get_mut(sender) {
             Some(set) => set.insert(sequence_number),
             None => {
@@ -207,7 +204,7 @@ impl ParkingLotIndex {
 
     pub(crate) fn remove(&mut self, txn: &PoolTransaction) {
         let sender = txn.get_sender();
-        let sequence_number = txn.get_sequence_number();
+        let sequence_number = txn.get_seq();
         if let Some(set) = self.data.get_mut(sender) {
             if set.remove(&sequence_number) {
                 self.size -= 1;
@@ -248,15 +245,12 @@ pub type TxnPointer = (String, u64);
 
 impl From<&PoolTransaction> for TxnPointer {
     fn from(transaction: &PoolTransaction) -> Self {
-        (
-            transaction.get_sender().to_string(),
-            transaction.get_sequence_number(),
-        )
+        (transaction.get_sender().to_string(), transaction.get_seq())
     }
 }
 
 impl From<&OrderedQueueKey> for TxnPointer {
     fn from(key: &OrderedQueueKey) -> Self {
-        (key.address.clone(), key.sequence_number)
+        (key.address.clone(), key.seq)
     }
 }

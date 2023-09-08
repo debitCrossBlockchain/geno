@@ -169,7 +169,7 @@ where
     if TEST_TXPOOL_INCHANNEL_AND_SWPAN {
         for txn in transactions {
             let status = Status::new(StatusCode::Accepted);
-            let tx_hash = txn.tx.hash();
+            let tx_hash = txn.hash();
             let hash = String::from_utf8(Vec::from(tx_hash)).unwrap();
             let result = status.with_message(hash);
             statuses.push((txn, (result, None)));
@@ -181,7 +181,7 @@ where
     let nonce_and_banace_vec = transactions
         .par_iter()
         .map(|t| {
-            get_account_nonce_banace(t.tx.sender()).map_err(|e| {
+            get_account_nonce_banace(t.sender()).map_err(|e| {
                 error!("TransactionValidation get account error");
                 e
             })
@@ -193,10 +193,10 @@ where
         .enumerate()
         .filter_map(|(idx, t)| {
             if let Ok((db_sequence_number, banace)) = nonce_and_banace_vec[idx] {
-                if t.tx.nonce() > db_sequence_number {
+                if t.nonce() > db_sequence_number {
                     //check balance for limit fee
                     if utils::general::fees_config().consume_gas {
-                        if t.tx.gas_limit() > banace {
+                        if t.gas_limit() > banace {
                             statuses.push((
                                 t,
                                 (
@@ -246,7 +246,7 @@ where
             if let Ok(validation_result) = &validation_results[idx] {
                 match validation_result.status() {
                     None => {
-                        let gas_amount = transaction.tx.gas_limit();
+                        let gas_amount = transaction.gas_limit();
                         let ranking_score = validation_result.score();
                         let mempool_status = mempool.add_txn(
                             transaction.clone(),

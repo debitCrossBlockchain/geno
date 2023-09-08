@@ -57,7 +57,7 @@ impl TransactionValidation for TxValidator {
         let txn_sender = txn.signatures.clone();
         for signature in txn_sender {
             // if already verify in jsonrpc,skip this verify
-            if tx_verify_pool_exist(txn.tx.hash()) {
+            if tx_verify_pool_exist(txn.hash()) {
                 continue;
             }
             let ctx = create_context(signature.get_encryption_type()).unwrap();
@@ -72,7 +72,7 @@ impl TransactionValidation for TxValidator {
                     0,
                 ));
             }
-            let result = ctx.verify(signature.get_sign_data(), txn.tx.hash(), &*pub_key.unwrap());
+            let result = ctx.verify(signature.get_sign_data(), txn.hash(), &*pub_key.unwrap());
             if result.is_err() {
                 return Ok(VMValidatorResult::new(
                     Some(StatusCode::INVALID_SIGNATURE),
@@ -87,10 +87,10 @@ impl TransactionValidation for TxValidator {
             }
 
             // insert tx verify pool
-            tx_verify_pool_set(txn.tx.hash());
+            tx_verify_pool_set(txn.hash());
         }
 
-        Ok(VMValidatorResult::new(None, txn.tx.gas_price()))
+        Ok(VMValidatorResult::new(None, txn.gas_price()))
     }
 }
 

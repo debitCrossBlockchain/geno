@@ -1,9 +1,6 @@
-
-
-
 use serde::{Deserialize, Serialize};
-use types::TransactionSignRaw;
 use std::time::Duration;
+use types::TransactionSignRaw;
 
 #[derive(Clone)]
 pub struct PoolTransaction {
@@ -21,14 +18,14 @@ impl PoolTransaction {
         state: TxState,
         account_seqno: u64,
     ) -> Self {
-        let nonce = txn.tx.nonce();
+        let nonce = txn.nonce();
         PoolTransaction {
             txn,
             expiration_time,
             state,
             sequence_info: SequenceInfo {
-                transaction_sequence_number: nonce,
-                account_sequence_number: account_seqno,
+                seq: nonce,
+                account_seq: account_seqno,
             },
         }
     }
@@ -41,18 +38,18 @@ impl PoolTransaction {
         self.sequence_info.clone()
     }
 
-    pub(crate) fn get_sequence_number(&self) -> u64 {
-        self.txn.tx.nonce()
+    pub(crate) fn get_seq(&self) -> u64 {
+        self.txn.nonce()
     }
     pub(crate) fn get_sender(&self) -> &str {
-        self.txn.tx.sender()
+        self.txn.sender()
     }
     pub(crate) fn get_gas_price(&self) -> u128 {
-        self.txn.tx.gas_price()
+        self.txn.gas_price()
     }
 
     pub(crate) fn get_hash(&self) -> &[u8] {
-        self.txn.tx.hash()
+        self.txn.hash()
     }
 
     pub(crate) fn get_tx(&self) -> TransactionSignRaw {
@@ -108,6 +105,6 @@ pub enum TxState {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct SequenceInfo {
-    pub transaction_sequence_number: u64,
-    pub account_sequence_number: u64,
+    pub seq: u64,
+    pub account_seq: u64,
 }

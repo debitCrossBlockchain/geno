@@ -10,14 +10,8 @@ use crate::{
 use network::PeerNetwork;
 use protobuf::{Message, RepeatedField};
 use protos::common::{ProtocolsMessage, ProtocolsMessageType};
+use std::{cmp::max, collections::HashMap, time::Duration};
 use utils::TransactionSign;
-use std::collections::HashMap;
-use std::{
-    cmp::max,
-    collections::HashSet,
-    time::{Duration, SystemTime},
-};
-
 
 use types::TransactionSignRaw;
 use utils::timing::duration_since_epoch;
@@ -25,9 +19,9 @@ pub struct Pool {
     // Stores the metadata of all transactions in pool (of all states).
     transactions: Store,
 
-    sequence_number_cache: HashMap<String, u64>,
+    seq_cache: HashMap<String, u64>,
 
-    pub system_transaction_timeout: Duration,
+    pub transaction_timeout: Duration,
 
     // for broadcast transactions
     pub broadcast_max_batch_size: usize,
@@ -39,8 +33,8 @@ impl Pool {
     pub fn new(config: &configure::TxPoolConfig, network: Option<PeerNetwork>) -> Self {
         Pool {
             transactions: Store::new(&config),
-            sequence_number_cache: HashMap::with_capacity(config.capacity),
-            system_transaction_timeout: Duration::from_secs(config.system_transaction_timeout_secs),
+            seq_cache: HashMap::with_capacity(config.capacity),
+            transaction_timeout: Duration::from_secs(config.system_transaction_timeout_secs),
             broadcast_cache: Vec::new(),
             broadcast_max_batch_size: config.broadcast_max_batch_size,
             network,
@@ -49,10 +43,9 @@ impl Pool {
 
     pub fn reinit(&mut self, config: &configure::TxPoolConfig, network: PeerNetwork) {
         self.transactions = Store::new(&config);
-        self.sequence_number_cache = HashMap::with_capacity(config.capacity);
+        self.seq_cache = HashMap::with_capacity(config.capacity);
         self.broadcast_max_batch_size = config.broadcast_max_batch_size;
-        self.system_transaction_timeout =
-            Duration::from_secs(config.system_transaction_timeout_secs);
+        self.transaction_timeout = Duration::from_secs(config.system_transaction_timeout_secs);
         self.network = Some(network);
     }
 
@@ -77,23 +70,17 @@ impl Pool {
     }
 
     /// This function will be called once the transaction has been stored.
-    pub(crate) fn remove_transaction(
-        &mut self,
-        sender: &str,
-        sequence_number: u64,
-        _is_rejected: bool,
-    ) {
-        let current_seq_number = self
-            .sequence_number_cache
+    pub(crate) fn remove_transaction(&mut self, sender: &str, seq: u64, is_rejected: bool) {
+        let current_seq = self
+            .seq_cache
             .remove(&sender.to_string())
             .unwrap_or_default();
 
         // update current cached sequence number for account
-        let new_seq_number = max(current_seq_number, sequence_number);
-        self.sequence_number_cache
-            .insert(sender.to_string(), new_seq_number);
+        let new_seq_number = max(current_seq, seq);
+        self.seq_cache.insert(sender.to_string(), new_seq_number);
 
-        let new_seq_number = sequence_number;
+        let new_seq_number = seq;
         self.transactions
             .commit_transaction(sender, new_seq_number + 1);
     }
@@ -104,31 +91,29 @@ impl Pool {
     pub fn add_txn(
         &mut self,
         txn: TransactionSignRaw,
-        _gas_amount: u64,
-        _ranking_score: u128,
-        db_sequence_number: u64,
+        gas_amount: u64,
+        ranking_score: u128,
+        db_seq: u64,
         tx_state: TxState,
     ) -> Status {
         ///todo log transaction
-        let cached_value = self.sequence_number_cache.get(txn.tx.sender());
-        let sequence_number =
-            cached_value.map_or(db_sequence_number, |value| max(*value, db_sequence_number));
-        self.sequence_number_cache
-            .insert(txn.tx.sender().to_string(), sequence_number);
+        let cached_value = self.seq_cache.get(txn.sender());
+        let sequence_number = cached_value.map_or(db_seq, |value| max(*value, db_seq));
+        self.seq_cache
+            .insert(txn.sender().to_string(), sequence_number);
 
         // don't accept old transactions (e.g. seq is less than account's current seq_number)
-        if txn.tx.nonce() <= db_sequence_number {
+        if txn.nonce() <= db_seq {
             return Status::new(StatusCode::InvalidSeqNumber).with_message(format!(
                 "transaction sequence number is {}, account sequence number is  {}",
-                txn.tx.nonce(),
-                db_sequence_number
+                txn.nonce(),
+                db_seq
             ));
         }
 
-        let expiration_time = duration_since_epoch() + self.system_transaction_timeout;
+        let expiration_time = duration_since_epoch() + self.transaction_timeout;
 
-        let txn_info =
-            PoolTransaction::new(txn.clone(), expiration_time, tx_state, db_sequence_number);
+        let txn_info = PoolTransaction::new(txn.clone(), expiration_time, tx_state, db_seq);
 
         let status = self.transactions.insert(txn_info);
 
@@ -153,9 +138,9 @@ impl Pool {
 
             if self.broadcast_cache.len() <= self.broadcast_max_batch_size {
                 let vec = self.broadcast_cache.drain(..).collect::<Vec<_>>();
-                let vec_signs: Vec<TransactionSign> = Vec::new();
-                for _it in vec {
-                    //vec_signs.push(<TransactionSignRaw as TryInto<TransactionSign>>::try_into(it).unwrap());
+                let mut vec_signs: Vec<TransactionSign> = Vec::new();
+                for it in vec {
+                    vec_signs.push(it.convert_into());
                 }
                 broadcast.set_transactions(RepeatedField::from(vec_signs));
             } else {
@@ -163,9 +148,9 @@ impl Pool {
                     .broadcast_cache
                     .drain(0..self.broadcast_max_batch_size)
                     .collect::<Vec<_>>();
-                let vec_signs: Vec<TransactionSign> = Vec::new();
-                for _it in vec {
-                    //vec_signs.push(<TransactionSignRaw as TryInto<TransactionSign>>::try_into(it).unwrap());
+                let mut vec_signs: Vec<TransactionSign> = Vec::new();
+                for it in vec {
+                    vec_signs.push(it.convert_into());
                 }
                 broadcast.set_transactions(RepeatedField::from(vec_signs));
             }
@@ -215,18 +200,16 @@ impl Pool {
     ) -> Vec<TransactionSignRaw> {
         let mut txn_walked = 0u64;
         let mut priority_index = PriorityIndex::new();
-        let iter_queue = self.transactions.iter_queue(
-            &mut priority_index,
-            &self.sequence_number_cache,
-            max_contract_size,
-        );
+        let iter_queue =
+            self.transactions
+                .iter_queue(&mut priority_index, &self.seq_cache, max_contract_size);
 
         let mut block: Vec<TransactionSignRaw> = Vec::with_capacity(batch_size as usize);
         for k in iter_queue {
-            if let Some(t) = self.transactions.get(&k.address, k.sequence_number) {
+            if let Some(t) = self.transactions.get(&k.address, k.seq) {
                 // exclude commited tx
                 if let Some(v) = exclude_transactions.get(&k.address) {
-                    if k.sequence_number <= v.max_seq {
+                    if k.seq <= v.max_seq {
                         continue;
                     }
                 }
@@ -257,17 +240,15 @@ impl Pool {
         let mut txn_walked = 0u64;
 
         let mut priority_index = PriorityIndex::new();
-        let iter_queue = self.transactions.iter_queue(
-            &mut priority_index,
-            &self.sequence_number_cache,
-            max_contract_size,
-        );
+        let iter_queue =
+            self.transactions
+                .iter_queue(&mut priority_index, &self.seq_cache, max_contract_size);
         let mut block: Vec<Vec<u8>> = Vec::with_capacity(batch_size as usize);
         for k in iter_queue {
-            if let Some(hash) = self.transactions.get_hash(&k.address, k.sequence_number) {
+            if let Some(hash) = self.transactions.get_hash(&k.address, k.seq) {
                 // exclude commited tx
                 if let Some(v) = exclude_transactions.get(&k.address) {
-                    if k.sequence_number <= v.max_seq {
+                    if k.seq <= v.max_seq {
                         continue;
                     }
                 }
