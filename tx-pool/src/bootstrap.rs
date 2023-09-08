@@ -1,11 +1,9 @@
 use crate::pool::Pool;
 use crate::status::{Status, StatusCode};
 use crate::transaction::TxState;
-use crate::validator::TxValidator;
-use crate::validator::{get_account_nonce_banace, TransactionValidation, VMStatus};
 use crate::types::{
     BroadCastTxReceiver, ClientReceiver, CommitNotification, CommitNotificationReceiver, Shared,
-    SubmissionStatusBundle,
+    SubmissionStatusBundle,Validator,get_account_nonce_banace, VMStatus, Validation
 };
 use crate::{TxPoolInstanceRef, TEST_TXPOOL_INCHANNEL_AND_SWPAN};
 use anyhow::Result;
@@ -99,7 +97,7 @@ pub(crate) async fn coordinator<V>(
     mut broadcast_tx_events: BroadCastTxReceiver,
     mut committed_events: CommitNotificationReceiver,
 ) where
-    V: TransactionValidation,
+    V: Validation,
 {
     // Use a BoundedExecutor to restrict only `workers_available` concurrent
     // worker tasks that can process incoming transactions.
@@ -144,7 +142,7 @@ pub(crate) async fn process_client_transaction_submission<V>(
     transaction: TransactionSignRaw,
     callback: oneshot::Sender<Result<SubmissionStatus>>,
 ) where
-    V: TransactionValidation,
+    V: Validation,
 {
     let statuses = process_incoming_transactions(&smp, vec![transaction], TxState::NotReady);
 
@@ -163,7 +161,7 @@ pub(crate) fn process_incoming_transactions<V>(
     tx_state: TxState,
 ) -> Vec<SubmissionStatusBundle>
 where
-    V: TransactionValidation,
+    V: Validation,
 {
     let mut statuses = vec![];
     if TEST_TXPOOL_INCHANNEL_AND_SWPAN {
@@ -274,7 +272,7 @@ pub(crate) async fn process_transaction_broadcast<V>(
     smp: Shared<V>,
     transactions: Vec<TransactionSignRaw>,
 ) where
-    V: TransactionValidation,
+    V: Validation,
 {
     let _results = process_incoming_transactions(&smp, transactions, TxState::NotReady);
 }
@@ -286,7 +284,7 @@ pub(crate) async fn process_committed_transactions<V>(
     _block_timestamp_usecs: u64,
     is_rejected: bool,
 ) where
-    V: TransactionValidation,
+    V: Validation,
 {
     let tx_size = msg.transactions.len();
     let mempool = &smp.mempool;
@@ -322,7 +320,7 @@ pub fn bootstrap(
     {
         mempool.write().reinit(config, network);
     }
-    let validator = Arc::new(RwLock::new(TxValidator::new()));
+    let validator = Arc::new(RwLock::new(Validator::new()));
     let executor = runtime.handle();
 
     let smp = Shared {

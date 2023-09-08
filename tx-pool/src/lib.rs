@@ -12,8 +12,6 @@ pub mod types;
 pub use bootstrap::bootstrap;
 pub mod status;
 pub mod config;
-pub mod validator;
-
 pub mod bootstrap;
 
 pub const TEST_TXPOOL_INCHANNEL_AND_SWPAN: bool = false;
