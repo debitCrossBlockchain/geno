@@ -1,7 +1,6 @@
 //! pool is used to track transactions which have been submitted but not yet
 //! agreed upon.
-use crate::status::{Status, StatusCode};
-use crate::types::CommittedTransaction;
+use crate::types::{CommittedTransaction,Status, StatusCode};
 use crate::{
     index::PriorityIndex,
     store::Store,

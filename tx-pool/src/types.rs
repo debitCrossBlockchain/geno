@@ -1,5 +1,4 @@
 use crate::pool::Pool;
-use crate::status::Status;
 use anyhow::Result;
 use futures::{
     channel::{mpsc, mpsc::UnboundedSender, oneshot},
@@ -7,11 +6,102 @@ use futures::{
     task::{Context, Poll},
 };
 use parking_lot::RwLock;
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{collections::HashMap, fmt, sync::Arc,convert::TryFrom};
 use types::TransactionSignRaw;
 
 use crate::verify_pool::*;
 use msp::signing::{create_context, create_public_key_by_bytes};
+
+/// A `Status` is represented as a required status code that is semantic coupled with an optional sub status and message.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub struct Status {
+    /// insertion status code
+    pub code: StatusCode,
+    /// optional message
+    pub message: String,
+}
+
+impl Status {
+    pub fn new(code: StatusCode) -> Self {
+        Self {
+            code,
+            message: "".to_string(),
+        }
+    }
+
+    /// Adds a message to the  status.
+    pub fn with_message(mut self, message: String) -> Self {
+        self.message = message;
+        self
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
+// #[cfg_attr(any(test, feature = "fuzzing"), derive(Arbitrary))]
+#[repr(u64)]
+pub enum StatusCode {
+    // Transaction was accepted by
+    Accepted = 0,
+    // Sequence number is old, etc.
+    InvalidSeqNumber = 1,
+    //  is full (reached max global capacity)
+    IsFull = 2,
+    // Account reached max capacity per account
+    TooManyTransactions = 3,
+    // Invalid update. Only gas price increase is allowed
+    InvalidUpdate = 4,
+    // transaction didn't pass vm_validation
+    VmError = 5,
+
+    Pending = 6,
+
+    // The transaction has a bad signature
+    InvalidSignature = 7,
+    // Bad account authentication key
+    InvalidAuthKey = 8,
+    // Sequence number is too old
+    SeqTooOld = 9,
+    // Sequence number is too new
+    SeqTooNew = 10,
+    // Insufficient balance to pay minimum transaction fee
+    InsufficientBalanceFee = 11,
+    // The transaction has expired
+    TransactionExpired = 12,
+    // The sending account does not exist
+    AccountDoesNotExist = 13,
+    ResourceDoesNotExist = 14,
+    UnknownStatus = 18446744073709551615,
+}
+
+impl TryFrom<u64> for StatusCode {
+    type Error = &'static str;
+
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(StatusCode::Accepted),
+            1 => Ok(StatusCode::InvalidSeqNumber),
+            2 => Ok(StatusCode::IsFull),
+            3 => Ok(StatusCode::TooManyTransactions),
+            4 => Ok(StatusCode::InvalidUpdate),
+            5 => Ok(StatusCode::VmError),
+            6 => Ok(StatusCode::Pending),
+            7 => Ok(StatusCode::UnknownStatus),
+            _ => Err("invalid StatusCode"),
+        }
+    }
+}
+
+impl From<StatusCode> for u64 {
+    fn from(status: StatusCode) -> u64 {
+        status as u64
+    }
+}
+
+impl fmt::Display for StatusCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
 
 pub trait Validation: Send + Sync + Clone {
     /// Validate a txn from client
@@ -42,14 +132,14 @@ impl Validation for Validator {
                 signature.get_public_key(),
             );
             if pub_key.is_err() {
-                return Ok(ValidatorResult::new(Some(StatusCode::INVALID_SIGNATURE), 0));
+                return Ok(ValidatorResult::new(Some(StatusCode::InvalidSignature), 0));
             }
             let result = ctx.verify(signature.get_sign_data(), txn.hash(), &*pub_key.unwrap());
             if result.is_err() {
-                return Ok(ValidatorResult::new(Some(StatusCode::INVALID_SIGNATURE), 0));
+                return Ok(ValidatorResult::new(Some(StatusCode::InvalidSignature), 0));
             }
             if !result.unwrap() {
-                return Ok(ValidatorResult::new(Some(StatusCode::INVALID_SIGNATURE), 0));
+                return Ok(ValidatorResult::new(Some(StatusCode::InvalidSignature), 0));
             }
 
             // insert tx verify pool
@@ -63,55 +153,23 @@ impl Validation for Validator {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ValidatorResult {
     /// Result of the validation: `None` if the transaction was successfully validated
-    /// or `Some(DiscardedVMStatus)` if the transaction should be discarded.
-    status: Option<VMStatus>,
+    /// or `Some(DiscardedStatusCode)` if the transaction should be discarded.
+    status: Option<StatusCode>,
 
     /// Score for ranking the transaction priority (e.g., based on the gas price).
     /// Only used when the status is `None`. Higher values indicate a higher priority.
     score: u128,
 }
 
-#[repr(u64)]
-#[allow(non_camel_case_types)]
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
-pub enum StatusCode {
-    // The status of a transaction as determined by the prologue.
-    // Validation Errors: 0-999
-    // We don't want the default value to be valid
-    UNKNOWN_VALIDATION_STATUS = 0,
-    // The transaction has a bad signature
-    INVALID_SIGNATURE = 1,
-    // Bad account authentication key
-    INVALID_AUTH_KEY = 2,
-    // Sequence number is too old
-    SEQUENCE_NUMBER_TOO_OLD = 3,
-    // Sequence number is too new
-    SEQUENCE_NUMBER_TOO_NEW = 4,
-    // Insufficient balance to pay minimum transaction fee
-    INSUFFICIENT_BALANCE_FOR_TRANSACTION_FEE = 5,
-    // The transaction has expired
-    TRANSACTION_EXPIRED = 6,
-    // The sending account does not exist
-    SENDING_ACCOUNT_DOES_NOT_EXIST = 7,
-
-    CDI_ERROR = 8,
-
-    RESOURCE_DOES_NOT_EXIST = 4003,
-    // this is std::u64::MAX, but we can't pattern match on that, so put the hardcoded value in
-    UNKNOWN_STATUS = 18446744073709551615,
-}
-
-pub type VMStatus = StatusCode;
-
 impl ValidatorResult {
-    pub fn new(vm_status: Option<VMStatus>, score: u128) -> Self {
+    pub fn new(vm_status: Option<StatusCode>, score: u128) -> Self {
         Self {
             status: vm_status,
             score,
         }
     }
 
-    pub fn status(&self) -> Option<VMStatus> {
+    pub fn status(&self) -> Option<StatusCode> {
         self.status
     }
 
@@ -119,7 +177,6 @@ impl ValidatorResult {
         self.score
     }
 }
-
 
 /// Struct that owns all dependencies required by shared mempool routines.
 #[derive(Clone)]
@@ -213,7 +270,7 @@ pub enum ConsensusResponse {
     CommitResponse(),
 }
 
-pub type SubmissionStatus = (Status, Option<VMStatus>);
+pub type SubmissionStatus = (Status, Option<StatusCode>);
 pub type SubmissionStatusBundle = (TransactionSignRaw, SubmissionStatus);
 pub type ClientSender = mpsc::UnboundedSender<(
     TransactionSignRaw,

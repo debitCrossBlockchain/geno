@@ -10,7 +10,6 @@ mod transaction;
 mod store;
 pub mod types;
 pub use bootstrap::bootstrap;
-pub mod status;
 pub mod config;
 pub mod bootstrap;
 

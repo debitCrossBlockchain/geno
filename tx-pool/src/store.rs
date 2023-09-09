@@ -1,4 +1,4 @@
-use crate::status::{Status, StatusCode};
+use crate::types::{Status, StatusCode};
 use crate::{
     index::{AccountTransactions, PriorityIndex, PriorityQueueIter, TTLIndex},
     transaction::{PoolTransaction, TxState},

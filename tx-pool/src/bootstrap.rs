@@ -1,9 +1,9 @@
 use crate::pool::Pool;
-use crate::status::{Status, StatusCode};
 use crate::transaction::TxState;
 use crate::types::{
-    BroadCastTxReceiver, ClientReceiver, CommitNotification, CommitNotificationReceiver, Shared,
-    SubmissionStatusBundle,Validator,get_account_nonce_banace, VMStatus, Validation
+    get_account_nonce_banace, BroadCastTxReceiver, ClientReceiver, CommitNotification,
+    CommitNotificationReceiver, Shared,SubmissionStatusBundle, Validation, Validator,
+    Status, StatusCode
 };
 use crate::{TxPoolInstanceRef, TEST_TXPOOL_INCHANNEL_AND_SWPAN};
 use anyhow::Result;
@@ -24,7 +24,7 @@ use tokio::time::interval;
 use tokio_stream::wrappers::IntervalStream;
 use tracing::*;
 use types::TransactionSignRaw;
-pub type SubmissionStatus = (Status, Option<VMStatus>);
+pub type SubmissionStatus = (Status, Option<StatusCode>);
 #[derive(Clone, Debug)]
 pub struct BoundedExecutor {
     semaphore: Arc<Semaphore>,
@@ -199,7 +199,7 @@ where
                                 t,
                                 (
                                     Status::new(StatusCode::VmError),
-                                    Some(VMStatus::INSUFFICIENT_BALANCE_FOR_TRANSACTION_FEE),
+                                    Some(StatusCode::InsufficientBalanceFee),
                                 ),
                             ));
                         } else {
@@ -213,7 +213,7 @@ where
                         t,
                         (
                             Status::new(StatusCode::VmError),
-                            Some(VMStatus::SEQUENCE_NUMBER_TOO_OLD),
+                            Some(StatusCode::SeqTooOld),
                         ),
                     ));
                 }
@@ -223,7 +223,7 @@ where
                     t,
                     (
                         Status::new(StatusCode::VmError),
-                        Some(VMStatus::RESOURCE_DOES_NOT_EXIST),
+                        Some(StatusCode::ResourceDoesNotExist),
                     ),
                 ));
             }
