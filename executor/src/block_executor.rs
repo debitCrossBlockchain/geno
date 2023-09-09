@@ -133,7 +133,7 @@ impl BlockExecutor {
         let mut txs_store = HashMap::with_capacity(block.get_transaction_signs().len());
         for (i, t) in txs.iter().enumerate() {
             let mut tx_store = TransactionSignStore::default();
-            let tx_hash = t.tx.hash().to_vec();
+            let tx_hash = t.hash().to_vec();
 
             tx_store.set_transaction_sign(block.get_transaction_signs().get(i).unwrap().clone());
             tx_store.set_transaction_result(result.tx_result_set.get(i).unwrap().clone());
@@ -286,7 +286,7 @@ impl BlockExecutor {
         let mut txs_store = HashMap::with_capacity(block.get_transaction_signs().len());
         for (i, t) in txs.iter().enumerate() {
             let mut tx_store = TransactionSignStore::default();
-            let tx_hash = t.tx.hash().to_vec();
+            let tx_hash = t.hash().to_vec();
 
             tx_store.set_transaction_sign(block.get_transaction_signs().get(i).unwrap().clone());
             tx_store.set_transaction_result(result.tx_result_set.get(i).unwrap().clone());

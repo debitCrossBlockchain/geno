@@ -51,7 +51,7 @@ impl EvmExecutor {
             Ok(ret_and_state) => ret_and_state,
             Err(e) => {
                 return Err(VmError::VMExecuteError {
-                    hash: transaction.tx.hash_hex(),
+                    hash: transaction.hash_hex(),
                     message: format!("{:?}", e),
                 });
             }
@@ -247,33 +247,33 @@ impl EvmExecutor {
         tx_env: &mut TxEnv,
         tx_raw: &TransactionSignRaw,
     ) -> std::result::Result<(), VmError> {
-        tx_env.gas_limit = tx_raw.tx.gas_limit();
-        tx_env.gas_price = U256::from(tx_raw.tx.gas_price());
+        tx_env.gas_limit = tx_raw.gas_limit();
+        tx_env.gas_price = U256::from(tx_raw.gas_price());
         tx_env.gas_priority_fee = None;
-        if tx_raw.tx.to().is_empty() {
+        if tx_raw.to().is_empty() {
             tx_env.transact_to = TransactTo::create();
         } else {
-            let to = AddressConverter::to_evm_address(tx_raw.tx.to())?;
+            let to = AddressConverter::to_evm_address(tx_raw.to())?;
             tx_env.transact_to = TransactTo::Call(to);
         }
 
-        tx_env.value = U256::from(tx_raw.tx.value());
-        tx_env.data = Bytes::from(tx_raw.tx.input().to_vec());
+        tx_env.value = U256::from(tx_raw.value());
+        tx_env.data = Bytes::from(tx_raw.input().to_vec());
 
-        let chain_id = match u64::from_str_radix(tx_raw.tx.chain_id(), 10) {
+        let chain_id = match u64::from_str_radix(tx_raw.chain_id(), 10) {
             Ok(value) => value,
             Err(e) => {
                 return Err(VmError::ValueConvertError {
                     error: format!(
                         "chain id {} convert error {}",
-                        tx_raw.tx.chain_id(),
+                        tx_raw.chain_id(),
                         e.to_string()
                     ),
                 });
             }
         };
         tx_env.chain_id = Some(chain_id);
-        tx_env.nonce = Some(tx_raw.tx.nonce());
+        tx_env.nonce = Some(tx_raw.nonce());
         tx_env.access_list.clear();
 
         Ok(())
@@ -315,7 +315,7 @@ impl EvmExecutor {
             Ok(ret_and_state) => ret_and_state,
             Err(e) => {
                 return Err(VmError::VMExecuteError {
-                    hash: transaction.tx.hash_hex(),
+                    hash: transaction.hash_hex(),
                     message: format!("{:?}", e),
                 });
             }
