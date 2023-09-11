@@ -1,31 +1,31 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use types::TransactionSignRaw;
+use types::SignedTransaction;
 
 #[derive(Clone)]
 pub struct PoolTransaction {
-    pub txn: TransactionSignRaw,
+    pub txn: SignedTransaction,
     // System expiration time of the transaction. It should be removed from mempool by that time.
     pub expiration_time: Duration,
     pub state: TxState,
-    pub sequence_info: SequenceInfo,
+    pub seq_info: SeqInfo,
 }
 
 impl PoolTransaction {
     pub(crate) fn new(
-        txn: TransactionSignRaw,
+        txn: SignedTransaction,
         expiration_time: Duration,
         state: TxState,
-        account_seqno: u64,
+        account_seq: u64,
     ) -> Self {
         let nonce = txn.nonce();
         PoolTransaction {
             txn,
             expiration_time,
             state,
-            sequence_info: SequenceInfo {
+            seq_info: SeqInfo {
                 seq: nonce,
-                account_seq: account_seqno,
+                account_seq,
             },
         }
     }
@@ -34,8 +34,8 @@ impl PoolTransaction {
         self.state.clone()
     }
 
-    pub(crate) fn get_sequence_info(&self) -> SequenceInfo {
-        self.sequence_info.clone()
+    pub(crate) fn get_seq_info(&self) -> SeqInfo {
+        self.seq_info.clone()
     }
 
     pub(crate) fn get_seq(&self) -> u64 {
@@ -52,7 +52,7 @@ impl PoolTransaction {
         self.txn.hash()
     }
 
-    pub(crate) fn get_tx(&self) -> TransactionSignRaw {
+    pub(crate) fn get_tx(&self) -> SignedTransaction {
         self.txn.clone()
     }
 
@@ -104,7 +104,7 @@ pub enum TxState {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct SequenceInfo {
+pub struct SeqInfo {
     pub seq: u64,
     pub account_seq: u64,
 }

@@ -2,7 +2,7 @@ use parking_lot::RwLock;
 use std::collections::HashSet;
 
 lazy_static! {
-    pub static ref PoolVerifyRef: RwLock<PoolVerify> = RwLock::new(PoolVerify::default());
+    pub static ref POOL_VERIFY_REF: RwLock<PoolVerify> = RwLock::new(PoolVerify::default());
 }
 
 pub struct PoolVerify {
@@ -32,12 +32,12 @@ impl PoolVerify {
 }
 
 pub fn verify_pool_exist(hash: &[u8]) -> bool {
-    PoolVerifyRef.read().contains(hash)
+    POOL_VERIFY_REF.read().contains(hash)
 }
 pub fn verify_pool_set(hash: &[u8]) {
-    PoolVerifyRef.write().insert(hash);
+    POOL_VERIFY_REF.write().insert(hash);
 }
 
 pub fn verify_pool_del(hash: &[u8]) {
-    PoolVerifyRef.write().remove(hash);
+    POOL_VERIFY_REF.write().remove(hash);
 }

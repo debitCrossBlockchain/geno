@@ -1,13 +1,9 @@
 use crate::pool::Pool;
 use anyhow::Result;
-use futures::{
-    channel::{mpsc, mpsc::UnboundedSender, oneshot},
-    future::Future,
-    task::{Context, Poll},
-};
+use futures::channel::{mpsc, oneshot};
 use parking_lot::RwLock;
-use std::{collections::HashMap, fmt, sync::Arc,convert::TryFrom};
-use types::TransactionSignRaw;
+use std::{collections::HashMap, convert::TryFrom, fmt, sync::Arc};
+use types::SignedTransaction;
 
 use crate::verify_pool::*;
 use msp::signing::{create_context, create_public_key_by_bytes};
@@ -70,7 +66,7 @@ pub enum StatusCode {
     // The sending account does not exist
     AccountDoesNotExist = 13,
     ResourceDoesNotExist = 14,
-    UnknownStatus = 18446744073709551615,
+    UnknownStatus = 15,
 }
 
 impl TryFrom<u64> for StatusCode {
@@ -85,7 +81,15 @@ impl TryFrom<u64> for StatusCode {
             4 => Ok(StatusCode::InvalidUpdate),
             5 => Ok(StatusCode::VmError),
             6 => Ok(StatusCode::Pending),
-            7 => Ok(StatusCode::UnknownStatus),
+            7 => Ok(StatusCode::InvalidSignature),
+            8 => Ok(StatusCode::InvalidAuthKey),
+            9 => Ok(StatusCode::SeqTooOld),
+            10 => Ok(StatusCode::SeqTooNew),
+            11 => Ok(StatusCode::InsufficientBalanceFee),
+            12 => Ok(StatusCode::TransactionExpired),
+            13 => Ok(StatusCode::AccountDoesNotExist),
+            14 => Ok(StatusCode::ResourceDoesNotExist),
+            15 => Ok(StatusCode::UnknownStatus),
             _ => Err("invalid StatusCode"),
         }
     }
@@ -105,7 +109,7 @@ impl fmt::Display for StatusCode {
 
 pub trait Validation: Send + Sync + Clone {
     /// Validate a txn from client
-    fn validate(&self, _txn: &TransactionSignRaw) -> Result<ValidatorResult>;
+    fn validate(&self, _txn: &SignedTransaction) -> Result<ValidatorResult>;
 }
 
 #[derive(Clone)]
@@ -118,7 +122,7 @@ impl Validator {
 }
 
 impl Validation for Validator {
-    fn validate(&self, txn: &TransactionSignRaw) -> Result<ValidatorResult> {
+    fn validate(&self, txn: &SignedTransaction) -> Result<ValidatorResult> {
         let txn_sender = txn.signatures.clone();
         for signature in txn_sender {
             // if already verify in jsonrpc,skip this verify
@@ -178,13 +182,13 @@ impl ValidatorResult {
     }
 }
 
-/// Struct that owns all dependencies required by shared mempool routines.
+/// Struct that owns all dependencies required by shared pool routines.
 #[derive(Clone)]
 pub(crate) struct Shared<V>
 where
     V: Validation + 'static,
 {
-    pub mempool: Arc<RwLock<Pool>>,
+    pub pool: Arc<RwLock<Pool>>,
     pub config: configure::TxPoolConfig,
     pub validator: Arc<RwLock<V>>,
 }
@@ -198,15 +202,15 @@ pub enum Notification {
 }
 
 #[derive(Clone)]
-pub struct CommittedTransaction {
+pub struct Committed {
     pub sender: String,
     pub max_seq: u64,
     pub seqs: Vec<u64>,
 }
-/// Notification from state sync to mempool of commit event.
-/// This notifies mempool to remove committed txns.
+/// Notification from state sync to pool of commit event.
+/// This notifies pool to remove committed txns.
 pub struct CommitNotification {
-    pub transactions: HashMap<String, CommittedTransaction>,
+    pub transactions: HashMap<String, Committed>,
     pub count: u64,
 }
 
@@ -241,7 +245,7 @@ pub struct TransactionSummary {
     pub sequence_number: u64,
 }
 
-/// Message sent from consensus to mempool.
+/// Message sent from consensus to pool.
 pub enum ConsensusRequest {
     /// Request to pull block to submit to consensus.
     GetBlockRequest(
@@ -263,27 +267,23 @@ pub enum ConsensusRequest {
     ),
 }
 
-/// Response sent from mempool to consensus.
+/// Response sent from pool to consensus.
 pub enum ConsensusResponse {
     /// Block to submit to consensus
-    GetBlockResponse(Vec<TransactionSignRaw>),
+    GetBlockResponse(Vec<SignedTransaction>),
     CommitResponse(),
 }
 
 pub type SubmissionStatus = (Status, Option<StatusCode>);
-pub type SubmissionStatusBundle = (TransactionSignRaw, SubmissionStatus);
-pub type ClientSender = mpsc::UnboundedSender<(
-    TransactionSignRaw,
-    oneshot::Sender<Result<SubmissionStatus>>,
-)>;
-pub type ClientReceiver = mpsc::UnboundedReceiver<(
-    TransactionSignRaw,
-    oneshot::Sender<Result<SubmissionStatus>>,
-)>;
+pub type SubmissionStatusBundle = (SignedTransaction, SubmissionStatus);
+pub type ClientSender =
+    mpsc::UnboundedSender<(SignedTransaction, oneshot::Sender<Result<SubmissionStatus>>)>;
+pub type ClientReceiver =
+    mpsc::UnboundedReceiver<(SignedTransaction, oneshot::Sender<Result<SubmissionStatus>>)>;
 pub type CommitNotificationSender = mpsc::Sender<CommitNotification>;
 pub type CommitNotificationReceiver = mpsc::Receiver<CommitNotification>;
-pub type BroadCastTxSender = mpsc::UnboundedSender<Vec<TransactionSignRaw>>;
-pub type BroadCastTxReceiver = mpsc::UnboundedReceiver<Vec<TransactionSignRaw>>;
+pub type BroadcastSender = mpsc::UnboundedSender<Vec<SignedTransaction>>;
+pub type BroadcastReceiver = mpsc::UnboundedReceiver<Vec<SignedTransaction>>;
 
 pub fn get_account_nonce_banace(_account_address: &str) -> Result<(u64, u64)> {
     // for i in 0..3 {

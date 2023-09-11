@@ -2,7 +2,6 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-// #[serde(default, deny_unknown_fields)]
 pub struct TxPoolConfig {
     pub capacity: usize,
     pub capacity_per_user: usize,

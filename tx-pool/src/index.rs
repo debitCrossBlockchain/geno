@@ -1,9 +1,7 @@
-/// This module provides various indexes used by pool.
-use itertools::Itertools;
 
 use std::{
     cmp::Ordering,
-    collections::{btree_set, BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{btree_set, BTreeMap, BTreeSet},
     iter::Rev,
     time::Duration,
 };
@@ -12,7 +10,7 @@ use crate::transaction::PoolTransaction;
 
 pub type AccountTransactions = BTreeMap<u64, PoolTransaction>;
 
-/// PriorityIndex represents the main Priority Queue in Mempool.
+/// PriorityIndex represents the main Priority Queue in pool.
 /// It's used to form the transaction block for Consensus.
 /// Transactions are ordered by gas price. Second level ordering is done by expiration time.
 ///
@@ -33,14 +31,6 @@ impl PriorityIndex {
 
     pub(crate) fn insert(&mut self, txn: &PoolTransaction) {
         self.data.insert(self.make_key(txn));
-    }
-
-    pub(crate) fn remove(&mut self, txn: &PoolTransaction) {
-        self.data.remove(&self.make_key(txn));
-    }
-
-    pub(crate) fn contains(&self, txn: &PoolTransaction) -> bool {
-        self.data.contains(&self.make_key(txn))
     }
 
     fn make_key(&self, txn: &PoolTransaction) -> OrderedQueueKey {
@@ -89,7 +79,7 @@ impl Ord for OrderedQueueKey {
     }
 }
 
-/// TTLIndex is used to perform garbage collection of old transactions in Mempool.
+/// TTLIndex is used to perform garbage collection of old transactions in pool.
 /// Periodically separate GC-like job queries this index to find out transactions that have to be
 /// removed. Index is represented as `BTreeSet<TTLOrderingKey>`, where `TTLOrderingKey`
 /// is a logical reference to TxnInfo.
@@ -166,80 +156,7 @@ impl Ord for TTLOrderingKey {
     }
 }
 
-/// ParkingLotIndex keeps track of "not_ready" transactions, e.g., transactions that
-/// can't be included in the next block because their sequence number is too high.
-/// We keep a separate index to be able to efficiently evict them when Mempool is full.
-pub struct ParkingLotIndex {
-    // DS invariants:
-    // 1. for each entry (account, txns) in `data`, `txns` is never empty
-    // 2. for all accounts, data.get(account_indices.get(`account`)) == (account, sequence numbers of account's txns)
-    data: HashMap<String, HashSet<u64>>,
-    size: usize,
-}
-
-impl ParkingLotIndex {
-    pub(crate) fn new() -> Self {
-        Self {
-            data: HashMap::new(),
-            size: 0,
-        }
-    }
-
-    pub(crate) fn insert(&mut self, txn: &PoolTransaction) {
-        let sender = txn.get_sender();
-        let sequence_number = txn.get_seq();
-        let is_new_entry = match self.data.get_mut(sender) {
-            Some(set) => set.insert(sequence_number),
-            None => {
-                let mut set = HashSet::new();
-                set.insert(sequence_number);
-                self.data.insert(sender.to_string(), set);
-                true
-            }
-        };
-        if is_new_entry {
-            self.size += 1;
-        }
-    }
-
-    pub(crate) fn remove(&mut self, txn: &PoolTransaction) {
-        let sender = txn.get_sender();
-        let sequence_number = txn.get_seq();
-        if let Some(set) = self.data.get_mut(sender) {
-            if set.remove(&sequence_number) {
-                self.size -= 1;
-            }
-            if set.is_empty() {
-                self.data.remove(sender);
-            }
-        }
-    }
-
-    pub(crate) fn contains(&self, account: &str, seq_num: &u64) -> bool {
-        if let Some(set) = self.data.get(account) {
-            if let Some(_v) = set.get(seq_num) {
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Returns a random "non-ready" transaction (with highest sequence number for that account).
-    pub(crate) fn get_poppable(&mut self) -> Option<TxnPointer> {
-        for (sender, set) in self.data.iter() {
-            for seq in set.iter() {
-                return Some((sender.clone(), *seq));
-            }
-        }
-        None
-    }
-
-    pub(crate) fn size(&self) -> usize {
-        self.size
-    }
-}
-
-/// Logical pointer to `MempoolTransaction`.
+/// Logical pointer to `PoolTransaction`.
 /// Includes Account's address and transaction sequence number.
 pub type TxnPointer = (String, u64);
 

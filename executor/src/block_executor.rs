@@ -1,6 +1,6 @@
 use crate::block_result::BlockResult;
-use crate::LAST_COMMITTED_BLOCK_INFO_REF;
 use crate::block_verify::Verify;
+use crate::LAST_COMMITTED_BLOCK_INFO_REF;
 use anyhow::bail;
 use ledger_store::LedgerStorage;
 use protos::{
@@ -13,7 +13,7 @@ use state_store::StateStorage;
 use std::collections::HashMap;
 use storage_db::{MemWriteBatch, WriteBatchTrait, STORAGE_INSTANCE_REF};
 use types::error::BlockExecutionError;
-use types::transaction::TransactionSignRaw;
+use types::transaction::SignedTransaction;
 use utils::{
     general::{genesis_block_config, hash_crypto_byte, hash_zero, self_chain_hub, self_chain_id},
     parse::ProtocolParser,
@@ -24,7 +24,7 @@ pub struct BlockExecutor {}
 impl BlockExecutor {
     pub fn execute_block(
         block: &Ledger,
-    ) -> std::result::Result<(Vec<TransactionSignRaw>, BlockResult), BlockExecutionError> {
+    ) -> std::result::Result<(Vec<SignedTransaction>, BlockResult), BlockExecutionError> {
         let header = block.get_header();
 
         // initialize state by last block state root
@@ -46,7 +46,7 @@ impl BlockExecutor {
         // execute block
         let mut tx_array = Vec::with_capacity(block.get_transaction_signs().len());
         for (index, tx) in block.get_transaction_signs().iter().enumerate() {
-            let tx_raw = match TransactionSignRaw::try_from(tx.clone()) {
+            let tx_raw = match SignedTransaction::try_from(tx.clone()) {
                 Ok(tx_raw) => tx_raw,
                 Err(e) => {
                     return Err(BlockExecutionError::TransactionParamError {
@@ -80,7 +80,7 @@ impl BlockExecutor {
 
     pub fn commit_block(
         block: &mut Ledger,
-        txs: Vec<TransactionSignRaw>,
+        txs: Vec<SignedTransaction>,
         result: &BlockResult,
     ) -> anyhow::Result<()> {
         let mut header = block.get_header().clone();
@@ -230,7 +230,7 @@ impl BlockExecutor {
 
     pub fn commit_verify_block(
         block: &Ledger,
-        txs: Vec<TransactionSignRaw>,
+        txs: Vec<SignedTransaction>,
         result: &BlockResult,
     ) -> anyhow::Result<()> {
         let mut header = block.get_header().clone();
@@ -277,7 +277,7 @@ impl BlockExecutor {
         StateStorage::commit(state_batch)?;
 
         // verify state hash
-        match header.verify_state_hash(&state_root_hash){
+        match header.verify_state_hash(&state_root_hash) {
             Ok(v) if v == true => (),
             _ => bail!("verify state hash error"),
         };
@@ -301,7 +301,7 @@ impl BlockExecutor {
         let validator_hash = hash_crypto_byte(&ProtocolParser::serialize::<ValidatorSet>(
             &result.validator_set,
         ));
-        match header.verify_validators_hash(&validator_hash){
+        match header.verify_validators_hash(&validator_hash) {
             Ok(v) if v == true => (),
             _ => bail!("verify validators hash error"),
         };
@@ -321,51 +321,53 @@ impl BlockExecutor {
         Ok(())
     }
 
-
-    pub fn verify_block(&self, block: &Ledger) -> anyhow::Result<Vec<bool>>{
-
+    pub fn verify_block(&self, block: &Ledger) -> anyhow::Result<Vec<bool>> {
         //verify header (todo)
         let header = block.get_header();
-        
-        if let Ok(Some(h)) = LedgerStorage::load_max_block_height(){
-            if h+1 != header.get_height(){
+
+        if let Ok(Some(h)) = LedgerStorage::load_max_block_height() {
+            if h + 1 != header.get_height() {
                 bail!("verify block error!")
             }
-        }else{
+        } else {
             bail!("verify block error!!")
         };
-        if let Ok(Some(pre_header)) = LedgerStorage::load_ledger_header_by_seq(header.get_height() - 1){
-            match header.verify_pre_hash(pre_header.get_previous_hash()){
+        if let Ok(Some(pre_header)) =
+            LedgerStorage::load_ledger_header_by_seq(header.get_height() - 1)
+        {
+            match header.verify_pre_hash(pre_header.get_previous_hash()) {
                 Ok(v) if v == true => (),
                 _ => bail!("verify previous hash error!"),
             };
-        }else{
+        } else {
             bail!("verify previous hash error!!")
         }
 
         //verify transaction
-        let ret: Vec<bool> = block.get_transaction_signs().par_iter().map(|tx|{
-            match tx.verify_tx(){
+        let ret: Vec<bool> = block
+            .get_transaction_signs()
+            .par_iter()
+            .map(|tx| match tx.verify_tx() {
                 Ok(v) => v,
                 Err(_) => false,
-            }
-        }).collect();
+            })
+            .collect();
 
-        if ret.iter().any(|&r| r==false){
+        if ret.iter().any(|&r| r == false) {
             bail!("verify block error")
-        }else{
+        } else {
             Ok(ret)
         }
     }
 
-    pub fn execute_verify_block(&self, block: Ledger,)->anyhow::Result<()> {
-        match self.verify_block(&block){
+    pub fn execute_verify_block(&self, block: Ledger) -> anyhow::Result<()> {
+        match self.verify_block(&block) {
             Ok(_) => (),
             Err(e) => bail!(e),
         }
 
-        let (a,b) = match BlockExecutor::execute_block(&block){
-            Ok((a,b)) => (a,b),
+        let (a, b) = match BlockExecutor::execute_block(&block) {
+            Ok((a, b)) => (a, b),
             Err(e) => bail!(e),
         };
 
@@ -403,24 +405,21 @@ impl BlockExecutor {
         Ok(())
     }
 
-    pub fn call_transaction(
-        tx: &TransactionSign,
-    ) -> std::result::Result<(), ()> {
-    
-        let header = if let Ok(Some(h)) = LedgerStorage::load_max_block_height(){
-            if let Ok(Some(header)) = LedgerStorage::load_ledger_header_by_seq(h){
+    pub fn call_transaction(tx: &TransactionSign) -> std::result::Result<(), ()> {
+        let header = if let Ok(Some(h)) = LedgerStorage::load_max_block_height() {
+            if let Ok(Some(header)) = LedgerStorage::load_ledger_header_by_seq(h) {
                 header
-            }else{
-                return Ok(())
+            } else {
+                return Ok(());
             }
-        }else{
-            return Ok(())
+        } else {
+            return Ok(());
         };
-    
+
         // initialize state by last block state root
         let root_hash = TrieHash::default();
         let state = CacheState::new(root_hash);
-    
+
         // initialize contract vm
         let mut vm = match EvmExecutor::new(&header, state.clone()) {
             Ok(vm) => vm,
@@ -428,19 +427,17 @@ impl BlockExecutor {
                 return Err(());
             }
         };
-    
+
         // execute tx
-        let tx_raw = match TransactionSignRaw::try_from(tx.clone()) {
+        let tx_raw = match SignedTransaction::try_from(tx.clone()) {
             Ok(tx_raw) => tx_raw,
-            Err(e) => {
-                return Err(())
-            }
+            Err(e) => return Err(()),
         };
         let ret = match vm.call(&tx_raw) {
             Ok(v) => v,
             Err(e) => return Err(()),
         };
-    
+
         Ok(())
     }
 }

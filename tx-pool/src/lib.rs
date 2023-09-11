@@ -1,19 +1,14 @@
-#![forbid(unsafe_code)]
-// Increase recursion limit to allow for use of select! macro.
-#![recursion_limit = "1024"]
-
-mod verify_pool;
-
 mod index;
 pub mod pool;
-mod transaction;
 mod store;
+mod transaction;
 pub mod types;
+mod verify_pool;
 pub use bootstrap::bootstrap;
-pub mod config;
 pub mod bootstrap;
+pub mod config;
 
-pub const TEST_TXPOOL_INCHANNEL_AND_SWPAN: bool = false;
+// pub const TEST_TXPOOL_INCHANNEL_AND_SWPAN: bool = false;
 
 use configure::TxPoolConfig;
 use parking_lot::RwLock;
@@ -22,9 +17,8 @@ use std::sync::Arc;
 extern crate lazy_static;
 
 lazy_static! {
-    pub static ref TxPoolInstanceRef: Arc<RwLock<pool::Pool>> = Arc::new(RwLock::new(
-        pool::Pool::new(&TxPoolConfig::default(), None)
-    ));
+    pub static ref TX_POOL_INSTANCE_REF: Arc<RwLock<pool::Pool>> =
+        Arc::new(RwLock::new(pool::Pool::new(&TxPoolConfig::default(), None)));
 }
 
 #[cfg(test)]

@@ -1,9 +1,9 @@
-use protobuf::{Message,RepeatedField};
+use protobuf::{Message, RepeatedField};
 use protos::common::Signature;
 use protos::ledger::*;
 use utils::general::hash_crypto_byte;
 #[derive(Clone, Default)]
-pub struct TransactionSignRaw {
+pub struct SignedTransaction {
     tx_hash: Vec<u8>,
     source: String,
     nonce: u64,
@@ -15,12 +15,12 @@ pub struct TransactionSignRaw {
     hub_id: String,
     chain_id: String,
     reserves: ExtendedData,
-    tx_type:TransactionType,
+    tx_type: TransactionType,
     pub signatures: Vec<Signature>,
     pub source_type: TransactionSign_SourceType,
 }
 
-impl TransactionSignRaw {
+impl SignedTransaction {
     pub fn convert_into(&self) -> TransactionSign {
         let mut tx_sig = TransactionSign::new();
         let mut tx = Transaction::new();
@@ -105,7 +105,7 @@ impl TransactionSignRaw {
     }
 }
 
-impl TryFrom<TransactionSign> for TransactionSignRaw {
+impl TryFrom<TransactionSign> for SignedTransaction {
     type Error = anyhow::Error;
 
     fn try_from(tx_sign: TransactionSign) -> anyhow::Result<Self> {

@@ -14,7 +14,7 @@ use revm::{
 };
 use state::CacheState;
 use std::collections::BTreeMap;
-use types::{error::VmError, transaction::TransactionSignRaw};
+use types::{error::VmError, transaction::SignedTransaction};
 
 pub struct EvmExecutor {
     evm: EVM<VmState>,
@@ -40,7 +40,7 @@ impl EvmExecutor {
     pub fn execute(
         &mut self,
         index: usize,
-        transaction: &TransactionSignRaw,
+        transaction: &SignedTransaction,
         post_state: &mut PostState,
     ) -> std::result::Result<(), VmError> {
         Self::fill_tx_env(&mut self.evm.env.tx, &transaction)?;
@@ -245,7 +245,7 @@ impl EvmExecutor {
 
     fn fill_tx_env(
         tx_env: &mut TxEnv,
-        tx_raw: &TransactionSignRaw,
+        tx_raw: &SignedTransaction,
     ) -> std::result::Result<(), VmError> {
         tx_env.gas_limit = tx_raw.gas_limit();
         tx_env.gas_price = U256::from(tx_raw.gas_price());
@@ -305,7 +305,7 @@ impl EvmExecutor {
 
     pub fn call(
         &mut self,
-        transaction: &TransactionSignRaw,
+        transaction: &SignedTransaction,
     ) -> std::result::Result<ResultAndState, VmError> {
         Self::fill_tx_env(&mut self.evm.env.tx, &transaction)?;
 

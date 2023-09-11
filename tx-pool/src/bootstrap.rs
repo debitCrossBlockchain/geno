@@ -1,11 +1,11 @@
 use crate::pool::Pool;
 use crate::transaction::TxState;
 use crate::types::{
-    get_account_nonce_banace, BroadCastTxReceiver, ClientReceiver, CommitNotification,
-    CommitNotificationReceiver, Shared,SubmissionStatusBundle, Validation, Validator,
-    Status, StatusCode
+    get_account_nonce_banace, BroadcastReceiver, ClientReceiver, CommitNotification,
+    CommitNotificationReceiver, Shared, Status, StatusCode, SubmissionStatusBundle, Validation,
+    Validator,
 };
-use crate::{TxPoolInstanceRef, TEST_TXPOOL_INCHANNEL_AND_SWPAN};
+use crate::TX_POOL_INSTANCE_REF;
 use anyhow::Result;
 use futures::channel::oneshot;
 use futures::future::{Future, FutureExt};
@@ -23,8 +23,9 @@ use tokio::task::JoinHandle;
 use tokio::time::interval;
 use tokio_stream::wrappers::IntervalStream;
 use tracing::*;
-use types::TransactionSignRaw;
+use types::SignedTransaction;
 pub type SubmissionStatus = (Status, Option<StatusCode>);
+const TEST_TXPOOL_INCHANNEL_AND_SWPAN: bool = false;
 #[derive(Clone, Debug)]
 pub struct BoundedExecutor {
     semaphore: Arc<Semaphore>,
@@ -34,11 +35,11 @@ pub struct BoundedExecutor {
 impl BoundedExecutor {
     /// Create a new `BoundedExecutor` from an existing tokio [`Handle`]
     /// with a maximum concurrent task capacity of `capacity`.
-    pub fn new(capacity: usize, executor: Handle) -> Self {
+    pub fn new(capacity: usize, handle: Handle) -> Self {
         let semaphore = Arc::new(Semaphore::new(capacity));
         Self {
             semaphore,
-            executor,
+            executor: handle,
         }
     }
 
@@ -92,28 +93,28 @@ impl BoundedExecutor {
 /// Coordinator that handles inbound network events and outbound txn broadcasts.
 pub(crate) async fn coordinator<V>(
     smp: Shared<V>,
-    executor: Handle,
+    handle: Handle,
     mut client_events: ClientReceiver,
-    mut broadcast_tx_events: BroadCastTxReceiver,
+    mut broadcast_tx_events: BroadcastReceiver,
     mut committed_events: CommitNotificationReceiver,
 ) where
     V: Validation,
 {
     // Use a BoundedExecutor to restrict only `workers_available` concurrent
     // worker tasks that can process incoming transactions.
-    let workers_available = smp.config.shared_mempool_max_concurrent_inbound_syncs;
-    let bounded_executor = BoundedExecutor::new(workers_available, executor.clone());
+    let workers_available = smp.config.max_concurrent_inbound_syncs;
+    let executor = BoundedExecutor::new(workers_available, handle.clone());
 
     loop {
         ::futures::select! {
             (transaction, callback) = client_events.select_next_some() => {
-                bounded_executor.spawn(process_client_transaction_submission(smp.clone(),transaction,callback)).await;
+                executor.spawn(process_client_submission(smp.clone(),transaction,callback)).await;
             },
             transactions = broadcast_tx_events.select_next_some() => {
-                bounded_executor.spawn(process_transaction_broadcast(smp.clone(),transactions)).await;
+                executor.spawn(process_broadcast(smp.clone(),transactions)).await;
             },
             msg = committed_events.select_next_some()=>{
-                bounded_executor.spawn(process_committed_transactions(smp.clone(),msg, 0,false)).await;
+                executor.spawn(process_committed(smp.clone(),msg)).await;
             }
             complete => break,
         }
@@ -121,31 +122,30 @@ pub(crate) async fn coordinator<V>(
 }
 
 /// Garbage collect all expired transactions by SystemTTL.
-pub(crate) async fn gc_coordinator(mempool: Arc<RwLock<Pool>>, gc_interval_ms: u64) {
+pub(crate) async fn gc_coordinator(pool: Arc<RwLock<Pool>>, gc_interval_ms: u64) {
     let mut interval = IntervalStream::new(interval(Duration::from_millis(gc_interval_ms)));
     while let Some(_interval) = interval.next().await {
-        mempool.write().gc();
+        pool.write().gc();
     }
 }
 
 /// broadcast transaction
-pub(crate) async fn broadcast_transaction(pool: Arc<RwLock<Pool>>, tx_interval: u64) {
+pub(crate) async fn broadcast(pool: Arc<RwLock<Pool>>, tx_interval: u64) {
     let mut interval = IntervalStream::new(interval(Duration::from_millis(tx_interval)));
     while let Some(_interval) = interval.next().await {
-        pool.write().broadcast_transaction();
+        pool.write().broadcast();
     }
 }
 
 /// Processes transactions directly submitted by client.
-pub(crate) async fn process_client_transaction_submission<V>(
+pub(crate) async fn process_client_submission<V>(
     smp: Shared<V>,
-    transaction: TransactionSignRaw,
+    transaction: SignedTransaction,
     callback: oneshot::Sender<Result<SubmissionStatus>>,
 ) where
     V: Validation,
 {
-    let statuses = process_incoming_transactions(&smp, vec![transaction], TxState::NotReady);
-
+    let statuses = process_incoming(&smp, vec![transaction], TxState::NotReady);
     if let Some(status) = statuses.get(0) {
         if callback.send(Ok(status.1.clone())).is_err() {
             // counters::CLIENT_CALLBACK_FAIL.inc();
@@ -153,12 +153,12 @@ pub(crate) async fn process_client_transaction_submission<V>(
     }
 }
 
-/// Submits a list of SignedTransaction to the local mempool
+/// Submits a list of SignedTransaction to the local pool
 /// and returns a vector containing AdmissionControlStatus.
-pub(crate) fn process_incoming_transactions<V>(
+pub(crate) fn process_incoming<V>(
     smp: &Shared<V>,
-    transactions: Vec<TransactionSignRaw>,
-    tx_state: TxState,
+    transactions: Vec<SignedTransaction>,
+    state: TxState,
 ) -> Vec<SubmissionStatusBundle>
 where
     V: Validation,
@@ -189,28 +189,28 @@ where
     let transactions: Vec<_> = transactions
         .into_iter()
         .enumerate()
-        .filter_map(|(idx, t)| {
-            if let Ok((db_sequence_number, banace)) = nonce_and_banace_vec[idx] {
-                if t.nonce() > db_sequence_number {
+        .filter_map(|(idx, tx)| {
+            if let Ok((seq, banace)) = nonce_and_banace_vec[idx] {
+                if tx.nonce() > seq {
                     //check balance for limit fee
                     if utils::general::fees_config().consume_gas {
-                        if t.gas_limit() > banace {
+                        if tx.gas_limit() > banace {
                             statuses.push((
-                                t,
+                                tx,
                                 (
                                     Status::new(StatusCode::VmError),
                                     Some(StatusCode::InsufficientBalanceFee),
                                 ),
                             ));
                         } else {
-                            return Some((t, db_sequence_number));
+                            return Some((tx, seq));
                         }
                     } else {
-                        return Some((t, db_sequence_number));
+                        return Some((tx, seq));
                     }
                 } else {
                     statuses.push((
-                        t,
+                        tx,
                         (
                             Status::new(StatusCode::VmError),
                             Some(StatusCode::SeqTooOld),
@@ -220,7 +220,7 @@ where
             } else {
                 // Failed to get transaction
                 statuses.push((
-                    t,
+                    tx,
                     (
                         Status::new(StatusCode::VmError),
                         Some(StatusCode::ResourceDoesNotExist),
@@ -237,21 +237,13 @@ where
         .map(|t| smp.validator.read().validate(&t.0))
         .collect::<Vec<_>>();
     {
-        let mut mempool = smp.mempool.write();
-        for (idx, (transaction, db_sequence_number)) in transactions.into_iter().enumerate() {
+        let mut pool = smp.pool.write();
+        for (idx, (transaction, seq)) in transactions.into_iter().enumerate() {
             if let Ok(validation_result) = &validation_results[idx] {
                 match validation_result.status() {
                     None => {
-                        let gas_amount = transaction.gas_limit();
-                        let ranking_score = validation_result.score();
-                        let mempool_status = mempool.add_txn(
-                            transaction.clone(),
-                            gas_amount,
-                            ranking_score,
-                            db_sequence_number,
-                            tx_state,
-                        );
-                        statuses.push((transaction, (mempool_status, None)));
+                        let pool_status = pool.add(transaction.clone(), seq, state);
+                        statuses.push((transaction, (pool_status, None)));
                     }
                     Some(validation_status) => {
                         statuses.push((
@@ -268,33 +260,25 @@ where
 }
 
 /// Processes transactions from other nodes.
-pub(crate) async fn process_transaction_broadcast<V>(
-    smp: Shared<V>,
-    transactions: Vec<TransactionSignRaw>,
-) where
+pub(crate) async fn process_broadcast<V>(smp: Shared<V>, transactions: Vec<SignedTransaction>)
+where
     V: Validation,
 {
-    let _results = process_incoming_transactions(&smp, transactions, TxState::NotReady);
+    let _results = process_incoming(&smp, transactions, TxState::NotReady);
 }
 
 /// Remove transactions that are committed (or rejected) so that we can stop broadcasting them.
-pub(crate) async fn process_committed_transactions<V>(
-    smp: Shared<V>,
-    msg: CommitNotification,
-    _block_timestamp_usecs: u64,
-    is_rejected: bool,
-) where
+pub(crate) async fn process_committed<V>(smp: Shared<V>, msg: CommitNotification)
+where
     V: Validation,
 {
     let tx_size = msg.transactions.len();
-    let mempool = &smp.mempool;
+    let pool = &smp.pool;
     let start = Instant::now();
     msg.transactions
         .par_iter()
         .for_each(|(sender, transaction)| {
-            mempool
-                .write()
-                .remove_transaction(sender, transaction.max_seq, is_rejected);
+            pool.write().remove(sender, transaction.max_seq);
         });
 
     info!(
@@ -307,7 +291,7 @@ pub(crate) async fn process_committed_transactions<V>(
 pub fn bootstrap(
     config: &configure::TxPoolConfig,
     client_events: ClientReceiver,
-    broadcast_tx_events: BroadCastTxReceiver,
+    broadcast_tx_events: BroadcastReceiver,
     committed_events: CommitNotificationReceiver,
     network: PeerNetwork,
 ) -> Runtime {
@@ -315,16 +299,16 @@ pub fn bootstrap(
         .thread_name("shared-mem")
         .enable_all()
         .build()
-        .expect("[shared mempool] failed to create runtime");
-    let mempool = TxPoolInstanceRef.clone();
+        .expect("[pool] failed to create runtime");
+    let pool = TX_POOL_INSTANCE_REF.clone();
     {
-        mempool.write().reinit(config, network);
+        pool.write().reinit(config, network);
     }
     let validator = Arc::new(RwLock::new(Validator::new()));
     let executor = runtime.handle();
 
     let smp = Shared {
-        mempool: mempool.clone(),
+        pool: pool.clone(),
         config: config.clone(),
         validator,
     };
@@ -337,11 +321,11 @@ pub fn bootstrap(
         committed_events,
     ));
     executor.spawn(gc_coordinator(
-        mempool.clone(),
+        pool.clone(),
         config.system_transaction_gc_interval_ms,
     ));
-    executor.spawn(broadcast_transaction(
-        mempool.clone(),
+    executor.spawn(broadcast(
+        pool.clone(),
         config.broadcast_transaction_interval_ms,
     ));
 

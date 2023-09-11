@@ -1,3 +1,3 @@
 pub mod error;
 pub mod transaction;
-pub use transaction::TransactionSignRaw;
+pub use transaction::SignedTransaction;
