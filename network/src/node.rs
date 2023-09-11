@@ -56,7 +56,7 @@ impl Node {
         let span = create_span(name);
 
         let (handler, node_listener) = node::split::<()>();
-        match handler.network().listen(Transport::FramedTcp, listen_addr) {
+        match handler.network().listen(Transport::Udp, listen_addr) {
             Ok((id, addr)) => {
                 info!(parent: &span, "start listen {} {}", id, addr);
             }
