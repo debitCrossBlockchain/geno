@@ -8,8 +8,6 @@ pub use bootstrap::bootstrap;
 pub mod bootstrap;
 pub mod config;
 
-// pub const TEST_TXPOOL_INCHANNEL_AND_SWPAN: bool = false;
-
 use configure::TxPoolConfig;
 use parking_lot::RwLock;
 use std::sync::Arc;
