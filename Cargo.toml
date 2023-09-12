@@ -25,6 +25,7 @@ members = [
     "catchup",
     "consensus/consensus-pbft",
     "consensus/ledger-upgrade",
+    "geno-cmd",
 ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -38,7 +39,7 @@ utils = { path = "./utils", version = "0.1.0" }
 state = { path = "./state", version = "0.1.0" }
 catchup = { path = "./catchup", version = "0.1.0" }
 executor = { path = "./executor", version = "0.1.0" }
-
+geno-cmd = { path = "./geno-cmd", version = "0.1.0" }
 
 [target.'cfg(unix)'.dependencies]
 jemallocator = { version = "0.3.2", features = [

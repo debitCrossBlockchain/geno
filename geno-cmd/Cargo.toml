@@ -1,0 +1,14 @@
+[package]
+name = "geno-cmd"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.4.2", features = ["derive"] }
+anyhow = "1.0.62"
+
+
+[[bin]]
+name = "geno"
+path = "src/main.rs"
+
