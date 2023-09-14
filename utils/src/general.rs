@@ -1,34 +1,17 @@
-use configure::{Consensus, Fees, GenesisBlock, Ledger, CONFIGURE_INSTANCE_REF};
+use configure::{Consensus, Fees, GenesisBlock, CONFIGURE_INSTANCE_REF};
+
+pub const MILLI_UNITS_PER_SEC: i64 = 1000;
 
 pub const LEDGER_VERSION: u64 = 1000;
 pub const NETWORK_VERSION: u64 = 1000;
 
-pub const GENESIS_TIMESTAMP_USECS: u64 = 0;
+pub const GENESIS_TIMESTAMP_USECS: i64 = 0;
 pub const GENESIS_HEIGHT: u64 = 0;
 
-pub const HANDLE_BUF_LEN: usize = 16 * 64;
-pub const P2P_LIMIT_SIZE: u32 = 20 * 1024 * 1024;
-pub const BYTES_PER_KILO: u32 = 1024;
-pub const KILO_PER_MEGA: u32 = 1024;
-pub const BYTES_PER_MEGA: u32 = 2 * BYTES_PER_KILO * KILO_PER_MEGA;
-pub const TRANSACTION_LIMIT_SIZE: u32 = BYTES_PER_MEGA;
-pub const TXSET_LIMIT_SIZE: u32 = 16 * BYTES_PER_MEGA;
-
-pub const MAX_OPERATIONS_NUM_PER_TRANSACTION: usize = 100;
-pub const LAST_TX_HASHS_LIMIT: usize = 100;
-pub const PEER_DB_COUNT: usize = 5000;
-pub const MILLI_UNITS_PER_SEC: i64 = 1000;
-pub const MICRO_UNITS_PER_MILLI: i64 = 1000;
-pub const NANO_UNITS_PER_MICRO: i64 = 1000;
-pub const MICRO_UNITS_PER_SEC: i64 = MICRO_UNITS_PER_MILLI * MILLI_UNITS_PER_SEC;
-pub const NANO_UNITS_PER_SEC: i64 = NANO_UNITS_PER_MICRO * MICRO_UNITS_PER_SEC;
-
-pub const TX_EXECUTE_TIME_OUT: i64 = MICRO_UNITS_PER_SEC * 2;
-pub const BLOCK_EXECUTE_TIME_OUT: i64 = 5 * MICRO_UNITS_PER_SEC;
-
-pub const TRIE_KEY_MAX_LEN: usize = 63;
-pub const METADATA_KEY_MAXSIZE: usize = TRIE_KEY_MAX_LEN;
-pub const METADATA_MAX_VALUE_SIZE: usize = 256 * BYTES_PER_KILO as usize;
+pub const BFT_PREVIOUS_PROOF: &str = "bft_previous_proof";
+pub const BFT_CURRENT_PROOF: &str = "bft_current_proof";
+pub const BFT_CONSENSUS_VALUE_HASH: &str = "bft_consensus_value hash";
+pub const BFT_TX_HASH_LIST: &str = "bft_tx_hash_list";
 
 pub const NODE_VOLIDATORE: u64 = 0;
 pub const NODE_CANDIDATE_ADD: u64 = 1;
@@ -148,10 +131,6 @@ pub fn node_address() -> String {
 
 pub fn consensus_config() -> Consensus {
     CONFIGURE_INSTANCE_REF.consensus.clone()
-}
-
-pub fn ledger_config() -> Ledger {
-    CONFIGURE_INSTANCE_REF.ledger.clone()
 }
 
 pub fn genesis_block_config() -> GenesisBlock {

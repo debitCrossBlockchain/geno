@@ -1,4 +1,4 @@
-use crate::{cache_state::StateMapActionType, TrieHash, TrieReader, TrieWriter};
+use crate::{cache_state::StateMapActionType, TrieHash, TrieReader, TrieWriter, TRIE_KEY_MAX_LEN};
 use log::*;
 use protobuf::Message;
 use protos::{

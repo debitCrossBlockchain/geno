@@ -7,7 +7,9 @@ edition = "2021"
 
 [dependencies]
 storage-db = { path = "../storage-db", version = "0.1.0" }
+ledger-store = { path = "../ledger-store", version = "0.1.0" }
 state = { path = "../../state", version = "0.1.0" }
 protos = { path = "../../protos", version = "0.1.0" }
 utils = { path = "../../utils", version = "0.1.0" }
 anyhow = "1.0.52"
+hex = "0.4"

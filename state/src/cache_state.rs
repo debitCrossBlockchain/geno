@@ -1,6 +1,7 @@
 use crate::account_frame::AccountFrame;
 use crate::TrieHash;
 use crate::TrieReader;
+use crate::TRIE_KEY_MAX_LEN;
 
 use log::*;
 use parking_lot::RwLock;
@@ -9,7 +10,6 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::{hash::Hash, sync::Arc};
 use storage_db::STORAGE_INSTANCE_REF;
-use utils::general::TRIE_KEY_MAX_LEN;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum StateMapActionType {

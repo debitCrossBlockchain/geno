@@ -2,42 +2,43 @@ syntax = "proto3";
 import "common.proto";
 
 enum ConsensusType {
-  CONSENSUS_NONE = 0;
-  PBFT = 1;
-  TBFT = 2;
-  HOTSTUFF = 3;
+  PBFT = 0;
 }
 
 message Consensus {
-  ConsensusType msg_consensus_type = 1;
-  bytes data = 2;
+  ConsensusType consensus_type = 1;
+  bytes msg = 2;
 }
 
-//PBFT protocol
+message ConsensusProof {
+  ConsensusType consensus_type = 1;
+  bytes proof = 2;
+}
+
+message BftBaseInfo {
+  int64 view_number = 1;
+  uint64 sequence = 2;
+  int64 replica_id = 3;
+}
+
+
 message BftPrePrepare
 {
-  int64 view_number = 1;
-  int64 sequence = 2;
-  int64 replica_id = 3;
-  bytes value = 4;
-  bytes value_digest = 5;
-  string proposer = 6;
+  BftBaseInfo base = 1;
+  bytes value = 2;
+  bytes value_digest = 3;
 }
 
 message BftPrepare
 {
-  int64 view_number = 1;
-  int64 sequence = 2;
-  int64 replica_id = 3;
-  bytes value_digest = 4;
+  BftBaseInfo base = 1;
+  bytes value_digest = 2;
 }
 
 message BftCommit
 {
-  int64 view_number = 1;
-  int64 sequence = 2;
-  int64 replica_id = 3;
-  bytes value_digest = 4;
+  BftBaseInfo base = 1;
+  bytes value_digest = 2;
 }
 
 message BftPreparedSet
@@ -48,46 +49,21 @@ message BftPreparedSet
 
 message BftViewChange
 {
-  int64 view_number = 1; //v+1
-  int64 sequence = 2;     //last execution seq
-  bytes prepared_value_digest = 3; //prepared value hash
-  int64 replica_id = 4;
-}
-
-message ViewChangeMessage
-{
-  repeated ViewChangeStore item = 1;
-}
-
-message ViewChangeStore
-{
-  int64 sequence = 1; //v+1
-  int64 view_number = 2;     //last execution seq
-  int64 view_change_round = 3;
-  int64 start_time = 4;
-  int64 end_time = 5;
-  int64 last_propose_time = 6;
-  int64 last_newview_time = 7;
-  int64 new_view_round = 8;
-  BftSign view_change_msg = 9;
-  BftSign new_view = 10;
-  repeated BftSign msg_buffer = 11;
-  repeated BftViewChange view_changes = 12;
+  BftBaseInfo base = 1;
+  bytes prepared_value_digest = 2; //prepared value hash
 }
 
 message BftViewChangeValue
 {
-  BftSign view_change_env = 1; // view change env
-  BftPreparedSet prepared_set = 2;  //prepared messages larger than n
+  BftSign view_change_env = 1;
+  BftPreparedSet prepared_set = 2;
 }
 
 message BftNewView
 {
-  int64 view_number = 1; //v+1
-  int64 sequence = 2;     //sequence
-  int64 replica_id = 3;
-  repeated BftSign view_changes = 4;     //V
-  BftSign pre_prepare = 5;  //O
+  BftBaseInfo base = 1;
+  repeated BftSign view_changes = 2;     
+  BftSign pre_prepare = 3;  
 }
 
 enum BftMessageType {
@@ -99,14 +75,9 @@ enum BftMessageType {
   VIEW_CHANGE_VALUE = 5;
 }
 
-enum BftValueType {
-  BFT_VALUE_TX = 0;
-  BFT_VALUE_TX_SET = 1;
-}
-
 message Bft
 {
-  int64 round_number = 1; //for sending again
+  uint64 round_number = 1;
   BftMessageType msg_type = 2;
   BftPrePrepare pre_prepare = 3;
   BftPrepare prepare = 4;
@@ -114,21 +85,14 @@ message Bft
   BftViewChange view_change = 6;
   BftNewView new_view = 7;
   BftViewChangeValue view_change_value = 8;
-  string chain_id = 9;
-  string chain_hub = 10;
 }
 
 message BftSign
 {
   Bft bft = 1;
   Signature signature = 2;
-}
-
-
-message ConsensusProof {
-  ConsensusType ctype = 1;
-  BftProof pbft_proof=2;
-  TbftProof tbft_proof=3;
+  string chain_id = 3;
+  string chain_hub = 4;
 }
 
 message BftProof
@@ -136,15 +100,30 @@ message BftProof
   repeated BftSign commits = 1;
 }
 
-message FeeConfig
+message TxHashList
 {
-  enum Type {
-    UNKNOWN = 0;
-    GAS_PRICE = 1;
-    BASE_RESERVE = 2;
-  };
-  int64 gas_price = 1;
-  int64 base_reserve = 2;
+  repeated bytes hash_set = 1;
+}
+
+message ViewChangeStore
+{
+  uint64 sequence = 1;
+  int64 view_number = 2;  
+  uint64 view_change_round = 3;
+  uint64 start_time = 4;
+  uint64 end_time = 5;
+  uint64 last_propose_time = 6;
+  uint64 last_newview_time = 7;
+  uint64 new_view_round = 8;
+  BftSign view_change_msg = 9;
+  BftSign new_view = 10;
+  repeated BftSign msg_buffer = 11;
+  repeated BftViewChange view_changes = 12;
+}
+
+message ViewChangeMessage
+{
+  repeated ViewChangeStore item = 1;
 }
 
 
@@ -154,3 +133,26 @@ message NewViewRepondParam
   BftPreparedSet prepared_set = 2;
 }
 
+
+
+
+//for ledger version upgrade
+message LedgerUpgrade{
+    uint64 new_version = 1;
+	  string chain_id = 2;
+    string chain_hub = 3;
+}
+
+
+message LedgerUpgradeNotify
+{
+  int64 nonce = 1;
+	LedgerUpgrade upgrade = 2;
+	Signature signature = 3;
+};
+
+message LedgerUpgradeInfo {
+  int64 recv_time=1;
+  string address=2;
+  LedgerUpgradeNotify msg=3;
+};

@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 
+use anyhow::Ok;
 use protobuf::Message;
 use protos::{
-    common::{EntryList, ValidatorSet},
+    common::EntryList,
     ledger::{LedgerHeader, TransactionSignStore},
 };
 use storage_db::{MemWriteBatch, WriteBatchTrait, STORAGE_INSTANCE_REF};
 use utils::{
     general::{compose_prefix_str, compose_prefix_u64, hash_crypto_byte},
     parse::ProtocolParser,
-    TransactionSign,
 };
 
 pub const KEY_LEDGER_SEQ_PREFIX: &str = "ledger_max_seq";
@@ -17,7 +17,7 @@ pub const LEDGER_PREFIX: &str = "lg";
 pub const LEDGER_HASH_PREFIX: &str = "lg_hash";
 pub const TRANSACTION_PREFIX: &str = "tx";
 pub const TRANSACTION_HASH_LIST_PREFIX: &str = "tx_lst";
-pub const VALIDATORS_PREFIX: &str = "vs";
+
 pub struct LedgerStorage;
 
 impl LedgerStorage {
@@ -70,20 +70,6 @@ impl LedgerStorage {
         if let Some(value) = result {
             let tx = ProtocolParser::deserialize::<TransactionSignStore>(&value)?;
             Ok(Some(tx))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub fn load_validators(hash: &str) -> anyhow::Result<Option<ValidatorSet>> {
-        let result = STORAGE_INSTANCE_REF
-            .ledger_db()
-            .lock()
-            .get(&compose_prefix_str(VALIDATORS_PREFIX, hash))?;
-
-        if let Some(value) = result {
-            let validator_set = ProtocolParser::deserialize::<ValidatorSet>(&value)?;
-            Ok(Some(validator_set))
         } else {
             Ok(None)
         }
@@ -155,14 +141,6 @@ impl LedgerStorage {
         Self::store_ledger_header(batch, header);
         Self::store_ledger_tx_list(batch, header, txs);
         Self::store_ledger_tx(batch, txs);
-    }
-
-    pub fn store_validators(batch: &mut MemWriteBatch, validators: &ValidatorSet) {
-        let validator_hash =
-            hash_crypto_byte(&ProtocolParser::serialize::<ValidatorSet>(&validators));
-
-        let key = compose_prefix_str(VALIDATORS_PREFIX, &hex::encode(validator_hash));
-        batch.set(key, ProtocolParser::serialize::<ValidatorSet>(validators));
     }
 
     pub fn commit(batch: MemWriteBatch) -> anyhow::Result<()> {

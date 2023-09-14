@@ -5,6 +5,7 @@ pub struct Consensus {
     pub consensus_type: String,
     pub block_max_tx_size: u64,
     pub block_max_contract_size: u64,
+    pub commit_interval: i64,
 }
 
 impl Default for Consensus {
@@ -13,6 +14,7 @@ impl Default for Consensus {
             consensus_type: "pbft".to_string(),
             block_max_tx_size: 100000,
             block_max_contract_size: 2500,
+            commit_interval: 10000,
         }
     }
 }
@@ -23,6 +25,7 @@ impl Clone for Consensus {
             consensus_type: self.consensus_type.clone(),
             block_max_tx_size: self.block_max_tx_size,
             block_max_contract_size: self.block_max_contract_size,
+            commit_interval: self.commit_interval,
         }
     }
 }

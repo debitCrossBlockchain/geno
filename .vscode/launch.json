@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "preLaunchTask": "rust: cargo build",
+            "request": "launch",
+            "name": "geno",
+            "program": "${workspaceRoot}/target/debug/geno",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

@@ -4,20 +4,20 @@ use network::message_handler::ReturnableProtocolsMessage;
 use network::peer_network::PeerNetwork;
 use network::{LocalBusPublisher, LocalBusSubscriber};
 use parking_lot::RwLock;
-use protobuf::Message;
 use protos::common::{
     ProtocolsActionMessageType, ProtocolsMessage, ProtocolsMessageType, ValidatorSet,
 };
 
-use protos::ledger::{LedgerUpgrade, LedgerUpgradeInfo, LedgerUpgradeNotify};
-use std::collections::HashSet;
-use std::sync::Arc;
+use protos::consensus::{LedgerUpgrade, LedgerUpgradeInfo, LedgerUpgradeNotify};
+use std::{collections::HashSet, sync::Arc};
 
 use tracing::*;
-use utils::general::*;
-use utils::parse::ProtocolParser;
-use utils::timer_manager::{TimerEventType, TimerManager, TimterEventParam};
-use utils::verify_sign::{get_sign_address, verify_sign};
+use utils::{
+    general::*,
+    parse::ProtocolParser,
+    timer_manager::{TimerEventType, TimerManager, TimterEventParam},
+    verify_sign::{get_sign_address, verify_sign},
+};
 
 pub struct LedgerUpgradeInstance {
     pub last_send_time: i64,
@@ -114,7 +114,7 @@ impl LedgerUpgradeInstance {
     }
 
     pub fn set_new_version(&mut self, new_version: u64) {
-        self.local_state.set_new_ledger_version(new_version);
+        self.local_state.set_new_version(new_version);
         self.local_state.set_chain_id(self_chain_id());
         self.local_state.set_chain_hub(self_chain_hub());
     }
@@ -123,10 +123,9 @@ impl LedgerUpgradeInstance {
         &mut self,
         validators: &ValidatorSet,
         quorum_size: usize,
-        proto_upgrade: &mut LedgerUpgrade,
-    ) -> bool {
+    ) -> Option<LedgerUpgrade> {
         if self.current_states.is_empty() {
-            return false;
+            return None;
         }
 
         let mut validator_set: HashSet<String> = HashSet::default();
@@ -136,14 +135,9 @@ impl LedgerUpgradeInstance {
 
         let mut counter_upgrade: FxHashMap<Vec<u8>, i32> = FxHashMap::default();
         for (addr, info) in self.current_states.iter() {
-            let hash = hash_crypto(
-                info.get_msg()
-                    .get_upgrade()
-                    .clone()
-                    .write_to_bytes()
-                    .unwrap()
-                    .as_slice(),
-            );
+            let hash = hash_crypto(&ProtocolParser::serialize::<LedgerUpgrade>(
+                info.get_msg().get_upgrade(),
+            ));
             if !counter_upgrade.contains_key(&hash) {
                 counter_upgrade.insert(hash.clone(), 0);
             }
@@ -153,13 +147,12 @@ impl LedgerUpgradeInstance {
                     let value = *v;
                     counter_upgrade.insert(hash.clone(), value + 1);
                     if value as usize + 1 >= quorum_size {
-                        proto_upgrade.clone_from(info.get_msg().get_upgrade());
-                        return true;
+                        return Some(info.get_msg().get_upgrade().clone());
                     }
                 }
             }
         }
-        false
+        None
     }
 
     pub fn handle_timer(&mut self, current_time: i64) {
@@ -170,8 +163,8 @@ impl LedgerUpgradeInstance {
         //Send the current state every 30s
         let mut notify = LedgerUpgradeNotify::default();
         if ((current_time - self.last_send_time) > (30 * MILLI_UNITS_PER_SEC))
-            && self.local_state.get_new_ledger_version() > 0
-            && self.local_state.get_new_ledger_version() > self.last_ledger_version
+            && self.local_state.get_new_version() > 0
+            && self.local_state.get_new_version() > self.last_ledger_version
         {
             notify.set_nonce(current_time);
             notify.set_upgrade(self.local_state.clone());

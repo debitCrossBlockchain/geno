@@ -8,3 +8,20 @@ crate-type = ["lib"]
 
 [dependencies]
 ledger-upgrade = { path = "../ledger-upgrade", version = "0.1.0" }
+network = { path = "../../network", version = "0.1.0" }
+protos = { path = "../../protos", version = "0.1.0" }
+utils = { path = "../../utils", version = "0.1.0" }
+msp = { path = "../../msp", version = "0.1.0" }
+consensus-store = { path = "../../storage/consensus-store", version = "0.1.0" }
+ledger-store = { path = "../../storage/ledger-store", version = "0.1.0" }
+state-store = { path = "../../storage/state-store", version = "0.1.0" }
+executor = { path = "../../executor", version = "0.1.0" }
+configure = { path = "../../configure", version = "0.1.0" }
+protobuf = { version = "2.27.1", features = ["with-bytes"] }
+tracing = "0.1.29"
+chrono = "0.4.19"
+itertools = "0.8.2"
+anyhow = "1.0.38"
+fxhash = "0.2"
+parking_lot = "0.11"
+crossbeam-channel = "0.5"

@@ -1,6 +1,6 @@
 use crate::{
-    Consensus, Db, Fees, GenesisBlock, JsonRpcConfig, Ledger, P2PNetwork, TxPoolConfig,
-    WebsocketConfig, SSL,
+    Consensus, Db, Fees, GenesisBlock, JsonRpcConfig, P2PNetwork, TxPoolConfig, WebsocketConfig,
+    SSL,
 };
 use serde;
 use serde::Deserialize;
@@ -18,7 +18,6 @@ pub struct Configure {
     pub db: Db,
     pub genesis_block: GenesisBlock,
     pub consensus: Consensus,
-    pub ledger: Ledger,
     pub fees: Fees,
     pub tx_pool: TxPoolConfig,
     pub json_rpc: JsonRpcConfig,

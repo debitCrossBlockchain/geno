@@ -2,8 +2,8 @@ use crate::{connections::ConnectionSide, storage::P2PStorage, utils::PEER_DB_COU
 use message_io::network::Endpoint;
 use protobuf::Message;
 use protos::common::{
-    ErrCode, HelloMessage, HelloResponseMessage, Peer, Peers, ProtocolsActionMessageType,
-    ProtocolsMessage, ProtocolsMessageType,
+    HelloMessage, HelloResponseMessage, Peer, Peers, ProtocolsActionMessageType, ProtocolsMessage,
+    ProtocolsMessageType,
 };
 use std::{net::SocketAddr, str::FromStr};
 use tracing::*;
@@ -74,7 +74,7 @@ impl HelloMessageHandler {
     ) {
         let config = network.network_config();
         if message.chain_hub != config.chain_hub {
-            response.set_err_code(ErrCode::ERRCODE_INVALID_PARAMETER);
+            response.set_err_code(-1);
             let err_info = format!(
                 "different chain_hub, remote chain_hub {} is not equal to the local chain_hub {}",
                 message.chain_hub, config.chain_hub
@@ -88,7 +88,7 @@ impl HelloMessageHandler {
         }
 
         if message.network_id != config.network_id.clone() as u64 {
-            response.set_err_code(ErrCode::ERRCODE_INVALID_PARAMETER);
+            response.set_err_code(-1);
             let err_info = format!("different network_id, remote network_id {} is not equal to the local network_id {}", message.network_id, config.network_id);
             response.set_err_desc(err_info.clone());
             error!(
@@ -99,7 +99,7 @@ impl HelloMessageHandler {
         }
 
         if message.chain_id != config.chain_id {
-            response.set_err_code(ErrCode::ERRCODE_INVALID_PARAMETER);
+            response.set_err_code(-1);
             let err_info = format!(
                 "different chain_id, remote chain_id {} is not equal to the local chain_id {}",
                 message.chain_id, config.chain_id
@@ -114,7 +114,7 @@ impl HelloMessageHandler {
 
         let listen_port = message.get_listening_port();
         if listen_port <= 0 || listen_port > 65535 {
-            response.set_err_code(ErrCode::ERRCODE_INVALID_PARAMETER);
+            response.set_err_code(-1);
             let err_info = format!("peer's listen port {} is not valid", listen_port);
             response.set_err_desc(err_info.clone());
             error!(
@@ -125,7 +125,7 @@ impl HelloMessageHandler {
         }
 
         if message.node_address == config.node_address {
-            response.set_err_code(ErrCode::ERRCODE_INVALID_PARAMETER);
+            response.set_err_code(-1);
             if message.get_node_rand() != config.node_rand.as_str() {
                 let err_info = format!(
                     "the peer connection breaks as the configuration node addresses are duplicated"
@@ -190,7 +190,7 @@ impl HelloMessageHandler {
     ) {
         let message: HelloResponseMessage =
             Message::parse_from_bytes(proto_message.get_data()).unwrap();
-        if message.err_code != ErrCode::ERRCODE_SUCCESS {
+        if message.err_code != 0 {
             error!(
                 "failed to response the peer hello message.Peer reponse error code {}, desc {}",
                 message.get_err_code() as i64,
@@ -204,7 +204,7 @@ pub struct PeerSyncMessageHandler;
 
 impl PeerSyncMessageHandler {
     ///
-    pub async fn send_peersync_request(network: &PeerNetwork, peer_id: Endpoint) {
+    pub fn send_peersync_request(network: &PeerNetwork, peer_id: Endpoint) {
         let mut peers = Peers::default();
         if network.num_connected() < PEER_DB_COUNT {
             if network.conn_ids().contains(&peer_id) {

@@ -124,22 +124,17 @@ fn singular_field_to_json(
             serde_json::Value::String(field_descriptor.get_str(message).to_string())
         }
         FieldDescriptorProto_Type::TYPE_BYTES => {
-            match std::str::from_utf8(field_descriptor.get_bytes(message)) {
-                Ok(v) => serde_json::Value::String(v.to_string()),
-                Err(e) => match String::from_utf8(field_descriptor.get_bytes(message).to_vec()) {
-                    Ok(v) => serde_json::Value::String(v),
-                    // Err(err) => serde_json::Value::String(base64::encode(
-                    //     field_descriptor.get_bytes(message),
-                    // )),
-                    Err(err) => serde_json::Value::String("".to_string()),
-                },
-            }
+            let strr = msp::bytes_to_hex_str(field_descriptor.get_bytes(message));
+            serde_json::Value::String(strr)
 
-            // serde_json::Value::String(
-            //     std::str::from_utf8(field_descriptor.get_bytes(message))
-            //         .unwrap()
-            //         .to_string(),
-            // )
+            // match std::str::from_utf8(field_descriptor.get_bytes(message)) {
+            //     Ok(v) => serde_json::Value::String(v.to_string()),
+            //     Err(e) => match String::from_utf8(field_descriptor.get_bytes(message).to_vec()) {
+            //         Ok(v) => serde_json::Value::String(v),
+
+            //         Err(err) => serde_json::Value::String("".to_string()),
+            //     },
+            // }
         }
 
         FieldDescriptorProto_Type::TYPE_MESSAGE => {

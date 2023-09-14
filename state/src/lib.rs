@@ -14,6 +14,8 @@ use parking_lot::{Mutex, RwLock};
 use std::sync::Arc;
 pub use trie_hashdb::TrieHashDB;
 
+pub const TRIE_KEY_MAX_LEN: usize = 63;
+
 // pub use crate::reading_trie::{
 //     reading_trie_get, reading_trie_get_nonce_banace, reading_trie_update_account_cache, ReadingTrie,
 // };

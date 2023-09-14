@@ -87,56 +87,6 @@ message EntryList{
 	repeated bytes entry = 1;
 }
 
-enum ErrCode
-{
-  ERRCODE_SUCCESS = 0;
-  ERRCODE_INVALID_PARAMETER = 2;
-  ERRCODE_ACCESS_DENIED = 6;
-  ERRCODE_MATH_OVERFLOW = 7;
-
-  ERRCODE_DATABASE_ERROR = 8;
-  ERRCODE_TRIE_ERROR = 9;
-
-  ERRCODE_CREATE_IDENTITY = 30;
-
-  ERRCODE_INVALID_PUBKEY = 90;// UNUSED
-  ERRCODE_INVALID_PRIKEY = 91;
-  ERRCODE_INVALID_SIGNATURE = 93;
-  ERRCODE_INVALID_ADDRESS = 94;
-
-  ERRCODE_BAD_SEQUENCE = 99;
-  ERRCODE_ACCOUNT_LOW_RESERVE = 100; 
-  ERRCODE_ACCOUNT_SOURCEDEST_EQUAL = 101;
-  ERRCODE_ACCOUNT_DEST_EXIST = 102;
-  ERRCODE_ACCOUNT_NOT_EXIST = 103;
-  ERRCODE_ACCOUNT_INIT_LOW_RESERVE = 106;
-
-  ERRCODE_FEE_NOT_ENOUGH = 111;
-  ERRCODE_FEE_INVALID = 112;
-  ERRCODE_OUT_OF_TXCACHE = 114;
-
-
-  ERRCODE_INVALID_DATAVERSION = 144;  
-  ERRCODE_TX_SIZE_TOO_BIG = 146;
-
-  ERRCODE_CONTRACT_CREATE_FAIL = 150;
-  ERRCODE_CONTRACT_EXECUTE_FAIL = 151;
-  ERRCODE_CONTRACT_SYNTAX_ERROR = 152;
-  ERRCODE_CONTRACT_TOO_MANY_RECURSION = 153;
-  ERRCODE_CONTRACT_TOO_MANY_TRANSACTIONS = 154;
-  ERRCODE_CONTRACT_EXECUTE_EXPIRED = 155;
-  ERRCODE_CONTRACT_NO_STATE_ERROR = 156; 
-  ERRCODE_CONTRACT_NO_SCHEMA_ERROR = 157; 
-  ERRCODE_CONTRACT_PARAMETER_ERROR=158;
-  ERRCODE_CONTRACT_NO_FUNCTION_ERROR=159;
-  
-  ERRCODE_TX_INSERT_QUEUE_FAIL = 160;
-
-  ERRCODE_VALIDATOE_PROPOSAL_ERROR = 161;
-  ERRCODE_VALIDATOE_VOTE_ERROR = 162;
-  ERRCODE_CONTRACT_UPDATE_ERROR=163;
-};
-
 message HelloMessage {
   uint64 network_id = 1;
   uint64 ledger_version = 2;
@@ -151,13 +101,13 @@ message HelloMessage {
 }
 
 message HelloResponseMessage {
-  ErrCode err_code = 1;
+  int32 err_code = 1;
   string err_desc = 2;
 }
 
 
 message TransactionResult {
-  uint32 err_code = 1;
+  int32  err_code = 1;
   string message = 2;
   ContractResult contract_result = 3;
   uint64 gas_used = 4;
@@ -167,7 +117,7 @@ message TransactionResult {
 }
 
 message ContractResult {
-  uint32 err_code = 1;
+  int32 err_code = 1;
   bytes result = 2;
   string message = 3;
   repeated ContractEvent contract_event = 4;

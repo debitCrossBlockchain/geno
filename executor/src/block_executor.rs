@@ -5,6 +5,7 @@ use anyhow::bail;
 use ledger_store::LedgerStorage;
 use protos::{
     common::{Validator, ValidatorSet},
+    consensus::BftProof,
     ledger::*,
 };
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
@@ -124,6 +125,18 @@ impl BlockExecutor {
             &state_datas,
             &mut state_batch,
         )?;
+        let proof = if let Some(proof_data) = block
+            .get_extended_data()
+            .get_extra_data()
+            .get(utils::general::BFT_CURRENT_PROOF)
+        {
+            let proof = ProtocolParser::deserialize::<BftProof>(proof_data)?;
+            StateStorage::store_last_proof(&mut state_batch, &proof);
+            Some(proof)
+        } else {
+            None
+        };
+        StateStorage::store_validators(&mut state_batch, &result.validator_set);
         StateStorage::commit(state_batch)?;
 
         // set state hash
@@ -155,10 +168,12 @@ impl BlockExecutor {
         ));
 
         let mut ledger_batch = MemWriteBatch::new();
-        LedgerStorage::store_validators(&mut ledger_batch, &result.validator_set);
         LedgerStorage::store_ledger(&mut ledger_batch, &header, &txs_store);
         LedgerStorage::commit(ledger_batch)?;
 
+        LAST_COMMITTED_BLOCK_INFO_REF
+            .write()
+            .update(&header, &result.validator_set, proof);
         block.set_header(header);
 
         Ok(())
@@ -166,22 +181,19 @@ impl BlockExecutor {
 
     pub fn create_genesis_block() -> (Ledger, BlockResult) {
         let state = CacheState::new(TrieHash::default());
-        // let mut account_datas = HashMap::new();
+
         //create the account of genesis from config
         let genesis_block = genesis_block_config();
         let genesis_account =
             AccountFrame::new(genesis_block.genesis_account.clone(), 100000000000000000);
-        // account_datas.insert(
-        //     genesis_block.genesis_account.clone().as_bytes().to_vec(),
-        //     Some(genesis_account.serialize()),
-        // );
+
         state.upsert(&genesis_block.genesis_account, genesis_account);
 
         //create accounts of validators from config
         let mut validator_set = ValidatorSet::new();
         for address in genesis_block.validators.iter() {
             let account = AccountFrame::new(address.clone(), 0);
-            // account_datas.insert(address.as_bytes().to_vec(), Some(account.serialize()));
+
             state.upsert(address, account);
 
             let mut validator = Validator::new();
@@ -191,29 +203,16 @@ impl BlockExecutor {
         }
         state.commit();
 
-        // caculate trie root
-        // let state_db = STORAGE_INSTANCE_REF.account_db();
-        // let mut state_batch = MemWriteBatch::new();
-        // let state_root = match TrieWriter::commit(state_db, None, &account_datas, &mut state_batch)
-        // {
-        //     Ok(root) => root,
-        //     Err(e) => panic!("create_genesis_block trie commit error:{e:?}"),
-        // };
-
         // set bolck header
         let mut header = LedgerHeader::default();
         header.set_height(utils::general::GENESIS_HEIGHT);
         header.set_timestamp(utils::general::GENESIS_TIMESTAMP_USECS);
         header.set_previous_hash(hash_zero());
-        // header.set_state_hash(state_root.to_vec());
         header.set_chain_id(self_chain_id());
         header.set_hub_id(self_chain_hub());
         header.set_version(utils::general::LEDGER_VERSION);
         header.set_tx_count(0);
         header.set_total_tx_count(0);
-        // header.set_validators_hash(hash_crypto_byte(
-        //     &ProtocolParser::serialize::<ValidatorSet>(&validators),
-        // ));
         header.set_proposer(genesis_block.genesis_account.clone());
 
         let mut block = Ledger::default();
@@ -274,6 +273,8 @@ impl BlockExecutor {
             &state_datas,
             &mut state_batch,
         )?;
+
+        StateStorage::store_validators(&mut state_batch, &result.validator_set);
         StateStorage::commit(state_batch)?;
 
         // verify state hash
@@ -314,7 +315,6 @@ impl BlockExecutor {
         // };
 
         let mut ledger_batch = MemWriteBatch::new();
-        LedgerStorage::store_validators(&mut ledger_batch, &result.validator_set);
         LedgerStorage::store_ledger(&mut ledger_batch, &header, &txs_store);
         LedgerStorage::commit(ledger_batch)?;
 
@@ -375,12 +375,15 @@ impl BlockExecutor {
     }
 
     pub fn block_initialize() -> anyhow::Result<()> {
-        let (header, validators) = if let Some(height) = LedgerStorage::load_max_block_height()? {
+        let (header, validators, proof) = if let Some(height) =
+            LedgerStorage::load_max_block_height()?
+        {
             let header = LedgerStorage::load_ledger_header_by_seq(height)?;
             if let Some(header) = header {
-                let result = LedgerStorage::load_validators(&hex::encode(header.get_state_hash()))?;
+                let result = StateStorage::load_validators(&hex::encode(header.get_state_hash()))?;
                 if let Some(validators) = result {
-                    (header, validators)
+                    let proof = StateStorage::load_last_proof()?;
+                    (header, validators, proof)
                 } else {
                     panic!("block initialize load validators failed:{}", height);
                 }
@@ -395,14 +398,98 @@ impl BlockExecutor {
             (
                 block.get_header().clone(),
                 block_result.validator_set.clone(),
+                None,
             )
         };
 
         LAST_COMMITTED_BLOCK_INFO_REF
             .write()
-            .update(&header, &validators);
+            .update(&header, &validators, proof);
 
         Ok(())
+    }
+
+    pub fn initialize_new_block(
+        height: u64,
+        previous_hash: Vec<u8>,
+        timestamp: i64,
+        version: u64,
+        tx_count: u64,
+        total_tx_count: u64,
+        proposer: String,
+        previous_proof: Option<Vec<u8>>,
+        tx_hash_list: Option<Vec<u8>>,
+    ) -> Ledger {
+        let mut ledger = Ledger::default();
+        let mut header = LedgerHeader::default();
+        header.set_height(height);
+        header.set_timestamp(timestamp);
+        header.set_previous_hash(previous_hash);
+        header.set_version(version);
+        header.set_tx_count(tx_count);
+        header.set_total_tx_count(total_tx_count);
+        header.set_proposer(proposer);
+
+        ledger.set_header(header);
+        let mut extended_data = ExtendedData::default();
+        if let Some(previous_proof) = previous_proof {
+            extended_data.mut_extra_data().insert(
+                utils::general::BFT_PREVIOUS_PROOF.to_string(),
+                previous_proof,
+            );
+        }
+        if let Some(tx_hash_list) = tx_hash_list {
+            extended_data
+                .mut_extra_data()
+                .insert(utils::general::BFT_TX_HASH_LIST.to_string(), tx_hash_list);
+        }
+        if extended_data.extra_data.len() > 0 {
+            ledger.set_extended_data(extended_data);
+        }
+
+        ledger
+    }
+
+    pub fn clone_initially_block(block: &Ledger) -> Ledger {
+        let mut ledger = Ledger::default();
+        let mut header = LedgerHeader::default();
+        header.set_height(block.get_header().get_height());
+        header.set_timestamp(block.get_header().get_timestamp());
+        header.set_previous_hash(block.get_header().get_previous_hash().to_vec());
+        header.set_version(block.get_header().get_version());
+        header.set_tx_count(block.get_header().get_tx_count());
+        header.set_total_tx_count(block.get_header().get_total_tx_count());
+        header.set_proposer(block.get_header().get_proposer().to_string());
+
+        ledger.set_header(header);
+        let mut extended_data = ExtendedData::default();
+        if let Some(previous_proof) = block
+            .get_extended_data()
+            .get_extra_data()
+            .get(utils::general::BFT_PREVIOUS_PROOF)
+        {
+            extended_data.mut_extra_data().insert(
+                utils::general::BFT_PREVIOUS_PROOF.to_string(),
+                previous_proof.clone(),
+            );
+        }
+
+        if let Some(tx_hash_list) = block
+            .get_extended_data()
+            .get_extra_data()
+            .get(utils::general::BFT_TX_HASH_LIST)
+        {
+            extended_data.mut_extra_data().insert(
+                utils::general::BFT_TX_HASH_LIST.to_string(),
+                tx_hash_list.clone(),
+            );
+        }
+
+        if extended_data.extra_data.len() > 0 {
+            ledger.set_extended_data(extended_data);
+        }
+
+        ledger
     }
 
     pub fn call_transaction(tx: &TransactionSign) -> std::result::Result<(), ()> {
