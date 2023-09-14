@@ -5,6 +5,7 @@ mod keystore;
 use clap::{Parser, ValueEnum, Subcommand};
 use signdata::Command as SigndataCommand; 
 use keystore::Command as KeystoreCommand;
+use msp::{signing, utils};
 use anyhow::Result;
 
 
@@ -27,7 +28,7 @@ pub struct Command {
     #[clap(name = "delete", skip)]
     delete:Option<String>,
 
-    #[arg(value_enum)]
+    #[arg(value_enum, skip)]
     subcommand:Option<SubCmd>,
 
     #[clap(subcommand)]
@@ -52,15 +53,40 @@ pub enum Commands {
 impl Command {
     pub fn run(&self)->Result<()> {
         if let Some(password) = self.create.as_deref() {
-            println!("create account {:?}", password)
+            println!("create account {:?}", password);
+            let priv_key = signing::create_secret_key("eddsa_ed25519").unwrap();
+            let public_key = priv_key.get_pubkey();
+            let private_key = priv_key.as_hex();
+            let public_address = priv_key.get_address();
+            let private_key_aes = utils::aes::crypto_hex(
+                private_key.parse().unwrap(),
+                utils::get_data_secure_key(),
+            );
+            let sign_type = priv_key.get_algorithm_name().to_string();
+            println!("Creating account address:{}", public_address);
+            
+            #[derive(Serialize, Deserialize, Debug)]
+            pub struct Data {
+                public_key: String,
+                private_key: String,
+                address: String,
+                private_key_aes: String,
+                sign_type: String,
+            }
+
+            let result = Data {
+                public_key,
+                private_key,
+                address: public_address,
+                private_key_aes,
+                sign_type,
+            };
+            let result_json = serde_json::to_string(&result).unwrap();
+            println!("{}", result_json);
         }
 
         if let Some(address) = self.show_account.as_deref() {
             println!("show account {:?}", address)
-        }
-
-        if let Some(address) = self.delete.as_deref() {
-            println!("delete account {:?}", address)
         }
 
         match self.subcommand {

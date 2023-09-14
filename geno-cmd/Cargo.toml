@@ -6,7 +6,12 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.4.2", features = ["derive"] }
 anyhow = "1.0.62"
-
+ron = "0.6.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.64"
+ledger-store = { path = "../storage/ledger-store", version = "0.1.0" }
+configure = { path = "../configure", version = "0.1.0" }
+msp = { path = "../msp", version = "0.1.0" }
 
 [[bin]]
 name = "geno"
