@@ -24,7 +24,7 @@ impl PoolTransaction {
             expiration_time,
             state,
             seq_info: SeqInfo {
-                seq: nonce,
+                tx_seq: nonce,
                 account_seq,
             },
         }
@@ -61,20 +61,9 @@ impl PoolTransaction {
     }
 
     pub(crate) fn is_contract(&self) -> bool {
-        // if let Some(k) = self.txn.get_transaction().get_tx_type().get(0) {
-        //     if k.get_ktype() == protos::ledger::Kind_KindType::CREATE_ACCOUNT {
-        //         if k.get_create_account().has_contract() {
-        //             if k.get_create_account().get_contract().get_payload().len() > 0 {
-        //                 return true;
-        //             }
-        //         }
-        //     }
-        //     if k.get_ktype() == protos::ledger::Kind_KindType::PAY_COIN {
-        //         if k.get_pay_coin().has_input() {
-        //             return true;
-        //         }
-        //     }
-        // }
+        if !self.txn.to().is_empty() && !self.txn.input().is_empty() {
+            return true;
+        }
         false
     }
 }
@@ -105,6 +94,6 @@ pub enum TxState {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct SeqInfo {
-    pub seq: u64,
+    pub tx_seq: u64,
     pub account_seq: u64,
 }

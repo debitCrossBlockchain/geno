@@ -9,6 +9,7 @@ use protos::{
 };
 use std::sync::Arc;
 use tracing::error;
+use tx_pool::types::CommitNotificationSender;
 use utils::{
     general::LEDGER_VERSION,
     parse::ProtocolParser,
@@ -21,6 +22,7 @@ pub fn start_consensus(
     ledger_upgrade_instance: Arc<RwLock<LedgerUpgradeInstance>>,
     network_tx: PeerNetwork,
     network_consensus: PeerNetwork,
+    to_tx_pool_commit_sender: CommitNotificationSender,
 ) {
     let (timer_sender, timer_receiver) = bounded::<TimterEventParam>(1024);
 
@@ -39,6 +41,7 @@ pub fn start_consensus(
         ledger_upgrade_instance.clone(),
         network_tx.clone(),
         network_consensus.clone(),
+        to_tx_pool_commit_sender,
     )));
 
     if lcl.get_version() < LEDGER_VERSION {

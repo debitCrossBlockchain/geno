@@ -75,7 +75,7 @@ impl Store {
         // we allow increase in gas price to speed up process.
         // ignores the case transaction hash is same for retrying submit transaction.
         if let Some(txns) = self.transactions.get_mut(&address) {
-            if let Some(current_version) = txns.get_mut(&seq_info.seq) {
+            if let Some(current_version) = txns.get_mut(&seq_info.tx_seq) {
                 // already have same tx
                 if current_version.get_hash() == txn.get_hash() {
                     return Status::new(StatusCode::Pending);
@@ -89,7 +89,7 @@ impl Store {
                     return Status::new(StatusCode::InvalidSeqNumber).with_message(
                         format!(
                             "this transacetion's nonce({}) is too old,you need update nonce,sender({}) have submitted a transaction({}) witch is same nonce",
-                            seq_info.seq,
+                            seq_info.tx_seq,
                             address,
                             String::from_utf8_lossy(current_version.get_hash().as_ref())
                         ),
@@ -125,9 +125,9 @@ impl Store {
             }
 
             self.index
-                .insert(txn.get_hash().to_vec(), (address, seq_info.seq));
+                .insert(txn.get_hash().to_vec(), (address, seq_info.tx_seq));
             self.system_ttl_index.insert(&txn);
-            txns.insert(seq_info.seq, txn);
+            txns.insert(seq_info.tx_seq, txn);
         }
 
         let status = Status::new(StatusCode::Accepted);
@@ -201,7 +201,7 @@ impl Store {
         &'a self,
         priority_index: &'a mut PriorityIndex,
         seq_cache: &HashMap<String, u64>,
-        max_tx_size: u64,
+        max_contract_size: u64,
     ) -> PriorityQueueIter {
         let mut tracing_seqs = HashMap::new();
         let mut contract_walked = 0u64;
@@ -227,7 +227,7 @@ impl Store {
 
                     if is_contract {
                         contract_walked += 1;
-                        if contract_walked >= max_tx_size {
+                        if contract_walked >= max_contract_size {
                             break;
                         }
                     }

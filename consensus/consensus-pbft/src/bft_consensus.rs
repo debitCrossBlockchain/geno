@@ -10,8 +10,15 @@ use protos::{
     consensus::{BftMessageType, BftProof, BftSign, LedgerUpgrade, NewViewRepondParam, TxHashList},
     ledger::{ExtendedData, Ledger},
 };
-use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use tracing::{error, info, Span};
+use tx_pool::{
+    types::{CommitNotification, CommitNotificationSender, Committed},
+    TX_POOL_INSTANCE_REF,
+};
 use utils::{
     general::{hash_crypto_byte, LEDGER_VERSION, MILLI_UNITS_PER_SEC},
     parse::ProtocolParser,
@@ -40,11 +47,11 @@ pub struct BftConsensus {
     pub(crate) ledgerclose_check_timer_id: i64,
     pub(crate) consensus_check_timer_id: i64,
     pub(crate) new_view_repond_timer_id: i64,
-    // pub(crate) mp_consensus_commit_sender: MempoolCommitNotificationSender,
+    pub(crate) to_tx_pool_commit_sender: CommitNotificationSender,
     // pub(crate) txfetcher: LackTxFetcher,
     // pub(crate) commit_sender: crossbeam_channel::Sender<PbftCommitted>,
     // pub(crate) commited_tx_delete_timer_id: i64,
-    // pub(crate) commit_txs: HashMap<String, CommittedTransaction>,
+    pub(crate) last_commit_txs: HashMap<String, Committed>,
 }
 
 impl BftConsensus {
@@ -55,8 +62,7 @@ impl BftConsensus {
         ledger_upgrade_instance: Arc<RwLock<LedgerUpgradeInstance>>,
         network_tx: PeerNetwork,
         network_consensus: PeerNetwork,
-        // mp_consensus_request_sender: MempoolConsensusSender,
-        // mp_consensus_commit_sender: MempoolCommitNotificationSender,
+        to_tx_pool_commit_sender: CommitNotificationSender,
         // commit_sender: crossbeam_channel::Sender<PbftCommitted>,
     ) -> Self {
         let view_number = BftStorage::load_view_number().unwrap_or(0);
@@ -71,10 +77,12 @@ impl BftConsensus {
             network_tx,
             network_consensus,
             ledger_upgrade_instance,
+            to_tx_pool_commit_sender,
             start_consensus_timer_id: 0,
             ledgerclose_check_timer_id: 0,
             consensus_check_timer_id: 0,
             new_view_repond_timer_id: 0,
+            last_commit_txs: HashMap::default(),
         }
     }
 
@@ -356,7 +364,20 @@ impl BftConsensus {
         };
 
         // get tx from tx-pool
-        // todo
+        if hash_list.get_hash_set().len() > 0 {
+            let (tx_list, lacktx_hash_set) = TX_POOL_INSTANCE_REF
+                .read()
+                .get_block_by_hashs(hash_list.get_hash_set());
+            if lacktx_hash_set.len() > 0 {
+                for (hash, index) in lacktx_hash_set.iter() {
+                    error!(parent:self.span(),"lacktx hash({}) index({}) in block({})",msp::bytes_to_hex_str(hash),index,block.get_header().get_height());
+                }
+                return;
+            } else {
+                let value: Vec<_> = tx_list.iter().map(|t| t.convert_into()).collect();
+                block.set_transaction_signs(protobuf::RepeatedField::from(value));
+            }
+        }
 
         // add current proof into block
         let mut extended_data = ExtendedData::default();
@@ -452,46 +473,46 @@ impl BftConsensus {
     }
 
     pub fn delete_commit_tx(&mut self, block: &Ledger) {
-        //     if block.get_transaction_signs().len() > 0 {
-        //         let mut count = 0;
-        //         let mut transactions: HashMap<String, CommittedTransaction> = HashMap::new();
-        //         for tx in block.get_transaction_signs().iter() {
-        //             count += 1;
-        //             if let Some(v) = transactions.get_mut(t.get_transaction().get_source_address()) {
-        //                 if v.max_seq < tx.get_transaction().get_nonce() {
-        //                     v.max_seq = tx.get_transaction().get_nonce();
-        //                 }
-        //                 v.seqs.push(tx.get_transaction().get_nonce());
-        //             } else {
-        //                 let sender = tx.get_transaction().get_source_address().to_string();
-        //                 let c = CommittedTransaction {
-        //                     sender: sender.clone(),
-        //                     max_seq: tx.get_transaction().get_nonce(),
-        //                     seqs: vec![tx.get_transaction().get_nonce()],
-        //                 };
-        //                 transactions.insert(sender, c);
-        //             }
-        //         }
-        //         self.commit_txs.clear();
-        //         self.commit_txs.clone_from(&transactions);
-        //         info!(parent:self.span(),
-        //             "handle_value_committed ledger({}) txpool commit({}) size",
-        //             bft_value.get_ledger_seq(),
-        //             transactions.len()
-        //         );
-        //         let notify = MempoolCommitNotification {
-        //             transactions,
-        //             count,
-        //         };
-        //         match self.mp_consensus_commit_sender.try_send(notify) {
-        //             Err(e) => {
-        //                 error!(parent:self.span(),"handle_value_committed mp_consensus_commit_sender send error({})",e);
-        //             }
-        //             _ => {}
-        //         }
-        //     } else {
-        //         self.commit_txs.clear();
-        //     }
+        if block.get_transaction_signs().len() > 0 {
+            let mut count = 0;
+            let mut transactions: HashMap<String, Committed> = HashMap::new();
+            for tx in block.get_transaction_signs().iter() {
+                count += 1;
+                if let Some(v) = transactions.get_mut(tx.get_transaction().get_source()) {
+                    if v.max_seq < tx.get_transaction().get_nonce() {
+                        v.max_seq = tx.get_transaction().get_nonce();
+                    }
+                    v.seqs.insert(tx.get_transaction().get_nonce());
+                } else {
+                    let sender = tx.get_transaction().get_source().to_string();
+                    let mut seqs = HashSet::default();
+                    seqs.insert(tx.get_transaction().get_nonce());
+                    let c = Committed {
+                        sender: sender.clone(),
+                        max_seq: tx.get_transaction().get_nonce(),
+                        seqs,
+                    };
+                    transactions.insert(sender, c);
+                }
+            }
+            self.last_commit_txs.clear();
+            self.last_commit_txs.clone_from(&transactions);
+            info!(parent:self.span(),
+                "handle_value_committed ledger({}) txpool commit({}) size",
+                block.get_header().get_height(),
+                transactions.len()
+            );
+            let notify = CommitNotification {
+                transactions,
+                count,
+            };
+            match self.to_tx_pool_commit_sender.try_send(notify) {
+                Err(e) => {
+                    error!(parent:self.span(),"handle_value_committed to_tx_pool_commit_sender send error({})",e);
+                }
+                _ => {}
+            }
+        }
     }
 
     pub fn publish(&mut self, last_value: &Option<Ledger>) -> bool {
@@ -544,9 +565,20 @@ impl BftConsensus {
             }
         };
 
-        let tx_count = 0;
+        let hash_list = {
+            TX_POOL_INSTANCE_REF.read().get_block_hash_list(
+                CONFIGURE_INSTANCE_REF.consensus.block_max_tx_size,
+                CONFIGURE_INSTANCE_REF.consensus.block_max_contract_size,
+                &self.last_commit_txs,
+            )
+        };
+
+        let mut proto_hash_list = TxHashList::default();
+        proto_hash_list.mut_hash_set().clone_from_slice(&hash_list);
+
+        let tx_count = hash_list.len() as u64;
         let total_tx_count = lcl.get_total_tx_count() + tx_count;
-        let tx_hash_list = Some(Vec::new());
+        let tx_hash_list = Some(ProtocolParser::serialize::<TxHashList>(&proto_hash_list));
 
         let propose_value = BlockExecutor::initialize_new_block(
             lcl.get_height() + 1,

@@ -178,17 +178,17 @@ impl Pool {
     #[allow(clippy::explicit_counter_loop)]
     pub fn get_block(
         &self,
-        batch_size: u64,
         max_tx_size: u64,
+        max_contract_size: u64,
         exclude_txs: &HashMap<String, Committed>,
     ) -> Vec<SignedTransaction> {
         let mut txn_walked = 0u64;
         let mut priority_index = PriorityIndex::new();
         let iter_queue =
             self.transactions
-                .iter_queue(&mut priority_index, &self.seq_cache, max_tx_size);
+                .iter_queue(&mut priority_index, &self.seq_cache, max_contract_size);
 
-        let mut block: Vec<SignedTransaction> = Vec::with_capacity(batch_size as usize);
+        let mut block: Vec<SignedTransaction> = Vec::with_capacity(max_tx_size as usize);
         for key in iter_queue {
             if let Some(tx) = self.transactions.get(&key.address, key.seq) {
                 // exclude commited tx
@@ -200,7 +200,7 @@ impl Pool {
 
                 txn_walked += 1;
                 block.push(tx);
-                if txn_walked >= batch_size {
+                if txn_walked >= max_contract_size {
                     break;
                 }
             }
@@ -209,23 +209,19 @@ impl Pool {
         block
     }
 
-    /// Fetches next block of transactions hash list for consensus.
-    /// `batch_size` - size of requested block.
-    /// `seen_txns` - transactions that were sent to Consensus but were not committed yet,
-    ///  pool should filter out such transactions.
     #[allow(clippy::explicit_counter_loop)]
     pub fn get_block_hash_list(
         &self,
-        batch_size: u64,
         max_tx_size: u64,
+        max_contract_size: u64,
         exclude_txs: &HashMap<String, Committed>,
     ) -> Vec<Vec<u8>> {
         let mut txn_walked = 0u64;
         let mut priority_index = PriorityIndex::new();
         let iter_queue =
             self.transactions
-                .iter_queue(&mut priority_index, &self.seq_cache, max_tx_size);
-        let mut block: Vec<Vec<u8>> = Vec::with_capacity(batch_size as usize);
+                .iter_queue(&mut priority_index, &self.seq_cache, max_contract_size);
+        let mut block: Vec<Vec<u8>> = Vec::with_capacity(max_tx_size as usize);
         for k in iter_queue {
             if let Some(hash) = self.transactions.get_hash(&k.address, k.seq) {
                 // exclude commited tx
@@ -237,7 +233,7 @@ impl Pool {
 
                 txn_walked += 1;
                 block.push(hash);
-                if txn_walked >= batch_size {
+                if txn_walked >= max_tx_size {
                     break;
                 }
             }
@@ -248,7 +244,7 @@ impl Pool {
 
     pub fn get_block_by_hashs(
         &self,
-        hash_list: &[Vec<u8>]
+        hash_list: &[Vec<u8>],
     ) -> (Vec<SignedTransaction>, HashMap<Vec<u8>, usize>) {
         let mut block: Vec<SignedTransaction> = Vec::with_capacity(hash_list.len());
         let mut lack_txs: HashMap<Vec<u8>, usize> = HashMap::new();

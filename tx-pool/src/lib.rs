@@ -17,10 +17,3 @@ lazy_static! {
     pub static ref TX_POOL_INSTANCE_REF: Arc<RwLock<pool::Pool>> =
         Arc::new(RwLock::new(pool::Pool::new(&TxPoolConfig::default(), None)));
 }
-
-#[cfg(test)]
-pub use self::{
-    index::TxnPointer,
-    pool::Pool,
-    transaction::{TimelineState, TxState},
-};

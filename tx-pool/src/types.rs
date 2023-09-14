@@ -2,7 +2,12 @@ use crate::pool::Pool;
 use anyhow::Result;
 use futures::channel::{mpsc, oneshot};
 use parking_lot::RwLock;
-use std::{collections::HashMap, convert::TryFrom, fmt, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryFrom,
+    fmt,
+    sync::Arc,
+};
 use types::SignedTransaction;
 
 use crate::verify_pool::*;
@@ -205,7 +210,7 @@ pub enum Notification {
 pub struct Committed {
     pub sender: String,
     pub max_seq: u64,
-    pub seqs: Vec<u64>,
+    pub seqs: HashSet<u64>,
 }
 /// Notification from state sync to pool of commit event.
 /// This notifies pool to remove committed txns.

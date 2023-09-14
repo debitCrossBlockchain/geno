@@ -1,4 +1,3 @@
-
 use std::{
     cmp::Ordering,
     collections::{btree_set, BTreeMap, BTreeSet},
@@ -156,17 +155,15 @@ impl Ord for TTLOrderingKey {
     }
 }
 
-/// Logical pointer to `PoolTransaction`.
-/// Includes Account's address and transaction sequence number.
-pub type TxnPointer = (String, u64);
+pub type TxIndex = (String, u64);
 
-impl From<&PoolTransaction> for TxnPointer {
+impl From<&PoolTransaction> for TxIndex {
     fn from(transaction: &PoolTransaction) -> Self {
         (transaction.get_sender().to_string(), transaction.get_seq())
     }
 }
 
-impl From<&OrderedQueueKey> for TxnPointer {
+impl From<&OrderedQueueKey> for TxIndex {
     fn from(key: &OrderedQueueKey) -> Self {
         (key.address.clone(), key.seq)
     }
