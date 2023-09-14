@@ -11,8 +11,8 @@ use parking_lot::RwLock;
 
 pub enum CatchupState{
     Prepare,
-    catchuphronized,
-    catchuphronizing{
+    Catchuphronized,
+    Catchuphronizing{
         block_id: u64,
     },
 }
@@ -23,11 +23,11 @@ impl CatchupState {
     }
 
     pub fn is_catchuping(&self) -> bool {
-        matches!(self, CatchupState::catchuphronizing { .. })
+        matches!(self, CatchupState::Catchuphronizing { .. })
     }
 
     pub fn is_catchuped(&self) -> bool {
-        matches!(self, CatchupState::catchuphronized)
+        matches!(self, CatchupState::Catchuphronized)
     }
 }
 
@@ -55,7 +55,7 @@ impl CatchupStatus{
     }
 
     pub fn catchup_done(&mut self){
-        self.state = CatchupState::catchuphronized;
+        self.state = CatchupState::Catchuphronized;
     }
 
     pub fn catchup_prepare(&mut self){
@@ -63,7 +63,7 @@ impl CatchupStatus{
     }
 
     pub fn catchup_ing(&mut self, block_id:u64){
-        self.state = CatchupState::catchuphronizing { block_id };
+        self.state = CatchupState::Catchuphronizing { block_id };
     }
 
     pub fn get_height(&self)->u64{

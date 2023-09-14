@@ -1,6 +1,6 @@
 [package]
 name = "geno"
-version = "2.5.1"
+version = "1.0.0"
 edition = "2021"
 default-run = "geno"
 
@@ -13,7 +13,6 @@ members = [
     "msp",
     "utils",
     "utils/merkletree",
-    "leveldb-rs",
     "state",
     "vm",
     "executor",
@@ -32,7 +31,6 @@ members = [
 [dependencies]
 protos = { path = "./protos", version = "0.1.0" }
 configure = { path = "./configure", version = "0.1.0" }
-rusty-leveldb = { path = "./leveldb-rs", version = "0.3.6" }
 network = { path = "./network", version = "0.1.0" }
 msp = { path = "./msp", version = "0.1.0" }
 utils = { path = "./utils", version = "0.1.0" }

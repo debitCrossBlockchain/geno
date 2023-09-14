@@ -6,7 +6,6 @@ pub mod types;
 mod verify_pool;
 pub use bootstrap::bootstrap;
 pub mod bootstrap;
-pub mod config;
 
 use configure::TxPoolConfig;
 use parking_lot::RwLock;
