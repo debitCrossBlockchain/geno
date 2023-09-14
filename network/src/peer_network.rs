@@ -284,47 +284,6 @@ impl PeerNetwork {
         self.tasks.lock().push(read_data_thread);
     }
 
-    // convert data to frame
-    // pub fn process_buffer(
-    //     &self,
-    //     endpoint: Endpoint,
-    //     data: Vec<u8>,
-    //     reader_msg_sender: &Sender<(Endpoint, Vec<u8>)>,
-    // ) -> std::io::Result<()> {
-    //     self.node.process_buffer(endpoint, data, reader_msg_sender)
-    // }
-
-    // process frame
-    // pub fn start_reading_msg(&self) {
-    //     let read_msg_thread = {
-    //         let self_clone = self.clone();
-    //         let reader_recver = self.node().reader_msg_recver.clone();
-    //         NamespacedThread::spawn("read_msg_processer", move || loop {
-    //             select! {
-    //                 recv(reader_recver) -> msg =>{
-    //                     match msg {
-    //                         Ok((endpoint,data))=>{
-    //                             self_clone.process_msg(endpoint,data);
-    //                         }
-    //                         Err(e)=>{
-    //                             error!(parent:self_clone.node().span(),"process recv msg {}",e);
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //         })
-    //     };
-    //     self.tasks.lock().push(read_msg_thread);
-    // }
-
-    // pub fn process_msg(&self, endpoint: Endpoint, data: Vec<u8>) {
-    //     if let Some(v) = self.reader_counters.write().get_mut(&endpoint) {
-    //         *v += 1;
-    //     } else {
-    //         self.reader_counters.write().insert(endpoint, 1);
-    //     }
-    // }
-
     fn enable_writing_msg(&self) {
         let write_msg_thread = {
             let self_clone = self.clone();
