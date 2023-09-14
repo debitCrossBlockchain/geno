@@ -2,7 +2,7 @@ use crate::key_value_db::{KeyValueDB, KeyValueDb, MemWriteBatch};
 use anyhow::{anyhow, Ok, Result};
 use parking_lot::Mutex;
 #[cfg(target_os = "windows")]
-use rusty_leveldb::{Options, WriteBatch, DB};
+use rusty_leveldb::{Options, WriteBatch, DB,compressor,CompressorId};
 use std::sync::Arc;
 
 /// The central object responsible for handling all the connections.
@@ -17,7 +17,7 @@ impl LevelDbDriver {
         let mut opt = Options::default();
         opt.reuse_logs = false;
         opt.reuse_manifest = false;
-        opt.compression_type = rusty_leveldb::CompressionType::CompressionNone;
+        opt.compressor = compressor::SnappyCompressor::ID;
         opt.max_file_size = max_open_files as usize;
         Arc::new(Mutex::new(Box::new(LevelDbDriver {
             key_value_db: DB::open(db_path, opt).unwrap(),

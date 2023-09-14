@@ -13,7 +13,7 @@ lazy_static = "1.4.0"
 anyhow = "1.0.52"
 
 [target.'cfg(windows)'.dependencies]
-rusty-leveldb = { path = "../../leveldb-rs", version = "0.3.6" }
+rusty-leveldb = "2.0.0"
 
 [target.'cfg(unix)'.dependencies]
 rocksdb = "0.16.0"
