@@ -1,3 +1,4 @@
+use tx_pool::types::ClientSender;
 use utils::general::self_chain_id;
 
 use crate::{errors::JsonRpcError, ws_connections::WsConnections};
@@ -7,14 +8,16 @@ pub(crate) struct JsonRpcService {
     pub chain_id: String,
     batch_size_limit: u16,
     page_size_limit: u16,
+    jsonrpc_to_txpool_sender: ClientSender,
 }
 
 impl JsonRpcService {
-    pub fn new(config: &configure::JsonRpcConfig) -> Self {
+    pub fn new(config: &configure::JsonRpcConfig, jsonrpc_to_txpool_sender: ClientSender) -> Self {
         Self {
             chain_id: self_chain_id(),
             batch_size_limit: config.batch_size_limit,
             page_size_limit: config.batch_size_limit,
+            jsonrpc_to_txpool_sender,
         }
     }
 

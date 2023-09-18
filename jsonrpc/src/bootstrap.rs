@@ -9,27 +9,40 @@ use crate::{
 };
 use anyhow::Result;
 use futures::future::{join_all, Either};
+use protos::{common::TransactionResult, ledger::Ledger};
 use std::{net::SocketAddr, sync::Arc};
-use tokio::{
-    runtime::{Builder, Runtime},
-    sync::mpsc,
-};
+use tokio::runtime::{Builder, Runtime};
+use tx_pool::types::ClientReceiver;
 use warp::{http::header, reject::Reject, Filter, Reply};
 
 pub fn start_jsonrpc_service(
     config: &configure::JsonRpcConfig,
-) -> (Runtime, mpsc::UnboundedSender<PublishEvent>) {
+) -> (
+    Runtime,
+    Runtime,
+    ClientReceiver,
+    tokio::sync::mpsc::UnboundedSender<(Ledger, Vec<TransactionResult>)>,
+) {
     let runtime = Builder::new_multi_thread()
         .thread_name("json-rpc")
         .enable_all()
         .build()
         .expect("[json-rpc] failed to create runtime");
 
+    let ws_runtime = Builder::new_multi_thread()
+        .thread_name("websockt")
+        .enable_all()
+        .build()
+        .expect("[websockt] failed to create runtime");
+
     let collections = WsConnections::new(utils::general::self_chain_id());
     let collections_clone = collections.clone();
-    let (event_sender, event_receiver) = mpsc::unbounded_channel::<PublishEvent>();
+    let (ws_event_sender, ws_event_receiver) =
+        tokio::sync::mpsc::unbounded_channel::<(Ledger, Vec<TransactionResult>)>();
+    let (jsonrpc_to_txpool_sender, jsonrpc_to_txpool_receiver) =
+        futures::channel::mpsc::unbounded();
     let registry = Arc::new(build_registry());
-    let service = JsonRpcService::new(config);
+    let service = JsonRpcService::new(config, jsonrpc_to_txpool_sender);
 
     let base_route = warp::any()
         .and(warp::post())
@@ -84,11 +97,16 @@ pub fn start_jsonrpc_service(
         ),
     };
 
-    runtime
+    ws_runtime
         .handle()
-        .spawn(process_publish_event(collections_clone, event_receiver));
+        .spawn(process_publish_event(collections_clone, ws_event_receiver));
     runtime.handle().spawn(server);
-    (runtime, event_sender)
+    (
+        runtime,
+        ws_runtime,
+        jsonrpc_to_txpool_receiver,
+        ws_event_sender,
+    )
 }
 
 async fn http_handler(

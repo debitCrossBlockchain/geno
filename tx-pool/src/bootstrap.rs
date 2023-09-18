@@ -1,9 +1,9 @@
 use crate::pool::Pool;
 use crate::transaction::TxState;
 use crate::types::{
-    get_account_nonce_banace, BroadcastReceiver, ClientReceiver, CommitNotification,
-    CommitNotificationReceiver, Shared, Status, StatusCode, SubmissionStatusBundle, Validation,
-    Validator,
+    get_account_nonce_banace, BroadCastTxSender, BroadcastTxReceiver, ClientReceiver,
+    CommitNotification, CommitNotificationReceiver, CommitNotificationSender, Shared, Status,
+    StatusCode, SubmissionStatusBundle, Validation, Validator,
 };
 use crate::TX_POOL_INSTANCE_REF;
 use anyhow::Result;
@@ -95,7 +95,7 @@ pub(crate) async fn coordinator<V>(
     smp: Shared<V>,
     handle: Handle,
     mut client_events: ClientReceiver,
-    mut broadcast_tx_events: BroadcastReceiver,
+    mut broadcast_tx_events: BroadcastTxReceiver,
     mut committed_events: CommitNotificationReceiver,
 ) where
     V: Validation,
@@ -288,18 +288,19 @@ where
     );
 }
 
-pub fn bootstrap(
+pub fn start_txpool_service(
     config: &configure::TxPoolConfig,
     client_events: ClientReceiver,
-    broadcast_tx_events: BroadcastReceiver,
-    committed_events: CommitNotificationReceiver,
     network: PeerNetwork,
-) -> Runtime {
+) -> (Runtime, BroadCastTxSender, CommitNotificationSender) {
     let runtime = Builder::new_multi_thread()
         .thread_name("shared-mem")
         .enable_all()
         .build()
         .expect("[pool] failed to create runtime");
+
+    let (broadcast_tx_sender, broadcast_tx_events) = futures::channel::mpsc::unbounded();
+    let (consensus_committed_sender, committed_events) = futures::channel::mpsc::channel(1024);
     let pool = TX_POOL_INSTANCE_REF.clone();
     {
         pool.write().reinit(config, network);
@@ -329,5 +330,5 @@ pub fn bootstrap(
         config.broadcast_transaction_interval_ms,
     ));
 
-    runtime
+    (runtime, broadcast_tx_sender, consensus_committed_sender)
 }

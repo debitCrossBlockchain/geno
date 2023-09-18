@@ -287,8 +287,8 @@ pub type ClientReceiver =
     mpsc::UnboundedReceiver<(SignedTransaction, oneshot::Sender<Result<SubmissionStatus>>)>;
 pub type CommitNotificationSender = mpsc::Sender<CommitNotification>;
 pub type CommitNotificationReceiver = mpsc::Receiver<CommitNotification>;
-pub type BroadcastSender = mpsc::UnboundedSender<Vec<SignedTransaction>>;
-pub type BroadcastReceiver = mpsc::UnboundedReceiver<Vec<SignedTransaction>>;
+pub type BroadCastTxSender = mpsc::UnboundedSender<Vec<SignedTransaction>>;
+pub type BroadcastTxReceiver = mpsc::UnboundedReceiver<Vec<SignedTransaction>>;
 
 pub fn get_account_nonce_banace(_account_address: &str) -> Result<(u64, u64)> {
     // for i in 0..3 {

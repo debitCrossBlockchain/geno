@@ -39,12 +39,10 @@ state = { path = "./state", version = "0.1.0" }
 catchup = { path = "./catchup", version = "0.1.0" }
 executor = { path = "./executor", version = "0.1.0" }
 geno-cmd = { path = "./geno-cmd", version = "0.1.0" }
-
-[target.'cfg(unix)'.dependencies]
-jemallocator = { version = "0.3.2", features = [
-    "profiling",
-    "unprefixed_malloc_on_supported_platforms",
-] }
+jsonrpc = { path = "./jsonrpc", version = "0.1.0" }
+tx-pool = { path = "./tx-pool", version = "0.1.0" }
+consensus-pbft = { path = "./consensus/consensus-pbft", version = "0.1.0" }
+futures = "0.3.12"
 
 [build-dependencies]
 build-data = "0.1.3"

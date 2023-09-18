@@ -4,7 +4,7 @@ mod store;
 mod transaction;
 pub mod types;
 mod verify_pool;
-pub use bootstrap::bootstrap;
+pub use bootstrap::start_txpool_service;
 pub mod bootstrap;
 
 use configure::TxPoolConfig;

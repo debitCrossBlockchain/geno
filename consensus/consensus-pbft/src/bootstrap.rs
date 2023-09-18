@@ -1,11 +1,12 @@
 use crossbeam_channel::{bounded, Receiver};
 use executor::LAST_COMMITTED_BLOCK_INFO_REF;
-use ledger_upgrade::ledger_upgrade::LedgerUpgradeInstance;
+use ledger_upgrade::ledger_upgrade::{LedgerUpgradeInstance, LedgerUpgradeService};
 use network::PeerNetwork;
 use parking_lot::RwLock;
 use protos::{
-    common::ProtocolsMessageType,
+    common::{ProtocolsMessageType, TransactionResult},
     consensus::{BftSign, Consensus, ConsensusType},
+    ledger::Ledger,
 };
 use std::sync::Arc;
 use tracing::error;
@@ -19,10 +20,10 @@ use utils::{
 use crate::bft_consensus::BftConsensus;
 
 pub fn start_consensus(
-    ledger_upgrade_instance: Arc<RwLock<LedgerUpgradeInstance>>,
     network_tx: PeerNetwork,
     network_consensus: PeerNetwork,
-    to_tx_pool_commit_sender: CommitNotificationSender,
+    commit_to_txpool_sender: CommitNotificationSender,
+    ws_publish_event_sender: tokio::sync::mpsc::UnboundedSender<(Ledger, Vec<TransactionResult>)>,
 ) {
     let (timer_sender, timer_receiver) = bounded::<TimterEventParam>(1024);
 
@@ -33,6 +34,9 @@ pub fn start_consensus(
             .clone()
     };
     let lcl = { LAST_COMMITTED_BLOCK_INFO_REF.read().get_header().clone() };
+    let ledger_upgrade_service =
+        LedgerUpgradeService::start(network_consensus.clone(), lcl.get_height());
+    let ledger_upgrade_instance = ledger_upgrade_service.ledger_upgrade.clone();
 
     let consensus = Arc::new(RwLock::new(BftConsensus::new(
         timer_sender,
@@ -41,7 +45,8 @@ pub fn start_consensus(
         ledger_upgrade_instance.clone(),
         network_tx.clone(),
         network_consensus.clone(),
-        to_tx_pool_commit_sender,
+        commit_to_txpool_sender,
+        ws_publish_event_sender,
     )));
 
     if lcl.get_version() < LEDGER_VERSION {

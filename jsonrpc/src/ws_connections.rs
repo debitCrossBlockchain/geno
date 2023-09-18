@@ -1,4 +1,8 @@
 use parking_lot::RwLock;
+use protos::{
+    common::TransactionResult,
+    ledger::{Ledger, TransactionSignStore},
+};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
@@ -254,9 +258,27 @@ impl WsConnections {
 
 pub async fn process_publish_event(
     connections: WsConnections,
-    mut event_receiver: mpsc::UnboundedReceiver<PublishEvent>,
+    mut event_receiver: mpsc::UnboundedReceiver<(Ledger, Vec<TransactionResult>)>,
 ) {
     while let Some(event) = event_receiver.recv().await {
-        connections.publish_event(event);
+        let (ledger, tx_result_arr) = event;
+
+        let header = ledger.get_header().clone();
+        connections.publish_event(PublishEvent::Headers(header));
+
+        for (index, tx) in ledger.get_transaction_signs().iter().enumerate() {
+            if let Some(result) = tx_result_arr.get(index) {
+                let mut store = TransactionSignStore::default();
+                store.set_transaction_sign(tx.clone());
+                store.set_transaction_result(result.clone());
+                connections.publish_event(PublishEvent::Transactions(store));
+
+                if result.has_contract_result() {
+                    for e in result.get_contract_result().get_contract_event() {
+                        connections.publish_event(PublishEvent::Logs(e.clone()));
+                    }
+                }
+            }
+        }
     }
 }

@@ -1,12 +1,12 @@
 use ::utils::timer_manager::TimerSender;
 use configure::CONFIGURE_INSTANCE_REF;
 use consensus_store::bft_storage::BftStorage;
-use executor::{BlockExecutor, LAST_COMMITTED_BLOCK_INFO_REF};
+use executor::{block_result::BlockResult, BlockExecutor, LAST_COMMITTED_BLOCK_INFO_REF};
 use ledger_upgrade::ledger_upgrade::LedgerUpgradeInstance;
 use network::PeerNetwork;
 use parking_lot::RwLock;
 use protos::{
-    common::ValidatorSet,
+    common::{TransactionResult, ValidatorSet},
     consensus::{BftMessageType, BftProof, BftSign, LedgerUpgrade, NewViewRepondParam, TxHashList},
     ledger::{ExtendedData, Ledger},
 };
@@ -47,10 +47,9 @@ pub struct BftConsensus {
     pub(crate) ledgerclose_check_timer_id: i64,
     pub(crate) consensus_check_timer_id: i64,
     pub(crate) new_view_repond_timer_id: i64,
-    pub(crate) to_tx_pool_commit_sender: CommitNotificationSender,
-    // pub(crate) txfetcher: LackTxFetcher,
-    // pub(crate) commit_sender: crossbeam_channel::Sender<PbftCommitted>,
-    // pub(crate) commited_tx_delete_timer_id: i64,
+    pub(crate) commit_to_txpool_sender: CommitNotificationSender,
+    pub(crate) ws_publish_event_sender:
+        tokio::sync::mpsc::UnboundedSender<(Ledger, Vec<TransactionResult>)>,
     pub(crate) last_commit_txs: HashMap<String, Committed>,
 }
 
@@ -62,8 +61,11 @@ impl BftConsensus {
         ledger_upgrade_instance: Arc<RwLock<LedgerUpgradeInstance>>,
         network_tx: PeerNetwork,
         network_consensus: PeerNetwork,
-        to_tx_pool_commit_sender: CommitNotificationSender,
-        // commit_sender: crossbeam_channel::Sender<PbftCommitted>,
+        commit_to_txpool_sender: CommitNotificationSender,
+        ws_publish_event_sender: tokio::sync::mpsc::UnboundedSender<(
+            Ledger,
+            Vec<TransactionResult>,
+        )>,
     ) -> Self {
         let view_number = BftStorage::load_view_number().unwrap_or(0);
         let mut state = BftState::new(last_seq, network_consensus.clone());
@@ -77,12 +79,13 @@ impl BftConsensus {
             network_tx,
             network_consensus,
             ledger_upgrade_instance,
-            to_tx_pool_commit_sender,
+            commit_to_txpool_sender,
             start_consensus_timer_id: 0,
             ledgerclose_check_timer_id: 0,
             consensus_check_timer_id: 0,
             new_view_repond_timer_id: 0,
             last_commit_txs: HashMap::default(),
+            ws_publish_event_sender,
         }
     }
 
@@ -394,6 +397,9 @@ impl BftConsensus {
                 if let Err(e) = BlockExecutor::commit_block(&mut block, tx_list, &block_result) {
                     error!(parent:self.span(),"handle_value_committed commit_block error {}",e);
                     return;
+                } else {
+                    // publish event
+                    self.send_to_ws(&block, &block_result);
                 }
             }
             Err(e) => {
@@ -472,6 +478,15 @@ impl BftConsensus {
         self.start_ledgerclose_check_timer();
     }
 
+    pub fn send_to_ws(&mut self, block: &Ledger, result: &BlockResult) {
+        if let Err(e) = self
+            .ws_publish_event_sender
+            .send((block.clone(), result.tx_result_set.clone()))
+        {
+            error!("ws_publish_event_sender send error:{:?}", e);
+        }
+    }
+
     pub fn delete_commit_tx(&mut self, block: &Ledger) {
         if block.get_transaction_signs().len() > 0 {
             let mut count = 0;
@@ -506,7 +521,7 @@ impl BftConsensus {
                 transactions,
                 count,
             };
-            match self.to_tx_pool_commit_sender.try_send(notify) {
+            match self.commit_to_txpool_sender.try_send(notify) {
                 Err(e) => {
                     error!(parent:self.span(),"handle_value_committed to_tx_pool_commit_sender send error({})",e);
                 }
