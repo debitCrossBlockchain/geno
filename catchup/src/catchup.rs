@@ -1,15 +1,14 @@
 
 
 use crate::network::CatchupNetworkInterace;
-use crate::notification::{ClientNotificationReceiver, CatchupNotificationReceiver, TimerNotificationReceiver, ClientNotification};
+use crate::notification::{ClientNotificationReceiver, CatchupNotificationReceiver, TimerNotificationReceiver, ClientNotification, BroadcastSender};
 use crate::storage_executor::StorageExecutorInterface;
 use crate::catchup_status::{CatchupStatus, Peers};
-
 
 use protos::{
     common::{
     ProtocolsActionMessageType, ProtocolsMessage, ProtocolsMessageType,},
-    ledger::{SyncBlockRequest, SyncBlockResponse, SyncChain, SyncChainStatus}
+    ledger::{SyncBlockRequest, SyncBlockResponse, SyncChain, SyncChainStatus, TransactionSignBrodcast}
 };
 use utils::{
     parse::ProtocolParser,
@@ -17,10 +16,11 @@ use utils::{
     general::self_chain_id,
 };
 use network::Endpoint;
+use types::SignedTransaction;
 
 use crossbeam_channel::{RecvError, select, bounded};
 use protobuf::{RepeatedField, Message}; 
-
+use tracing::error;
 
 
 pub struct Catchuper<S, N>{
@@ -31,6 +31,7 @@ pub struct Catchuper<S, N>{
     client_notify: ClientNotificationReceiver,
     catchup_notify: CatchupNotificationReceiver, 
     timer_notify: TimerNotificationReceiver, 
+    txns_nofity: BroadcastSender,
 }
 
 impl<S, N> Catchuper <S, N> 
@@ -42,7 +43,9 @@ impl<S, N> Catchuper <S, N>
         network: N, 
         executor: S, 
         client_notify: ClientNotificationReceiver, 
-        Catchup_notify: CatchupNotificationReceiver){
+        Catchup_notify: CatchupNotificationReceiver,
+        txns_nofity: BroadcastSender,
+    ){
 
         let (sender, timer_notify) = bounded(1024);
         let _id: i64 = TimerManager::instance().new_repeating_timer(
@@ -51,7 +54,7 @@ impl<S, N> Catchuper <S, N>
             TimerEventType::LedgerSync,
             None,
         );
-        let mut catchup = Catchuper::new(network, executor, client_notify, Catchup_notify, timer_notify);
+        let mut catchup = Catchuper::new(network, executor, client_notify, Catchup_notify, timer_notify, txns_nofity);
         
         //get last blockheader
 
@@ -67,7 +70,8 @@ impl<S, N> Catchuper <S, N>
         executor: S, 
         client_notify: ClientNotificationReceiver, 
         catchup_notify: CatchupNotificationReceiver, 
-        timer_notify: TimerNotificationReceiver) -> Self{
+        timer_notify: TimerNotificationReceiver,
+        txns_nofity: BroadcastSender,) -> Self{
         
         Self{
             status:CatchupStatus::default(),
@@ -77,6 +81,7 @@ impl<S, N> Catchuper <S, N>
             client_notify,
             catchup_notify,
             timer_notify,
+            txns_nofity,
         }
     }
  
@@ -121,6 +126,16 @@ impl<S, N> Catchuper <S, N>
                             _=>(),
                         }
                     }
+
+                    ProtocolsMessageType::TRANSACTION => {
+                        match proto_message.get_action() {
+                            ProtocolsActionMessageType::BROADCAST => {
+                                self.handle_txns_broadcast(peer_endpoint, &proto_message);
+                            },
+                            _=>(),
+                        }
+                    }
+
                     _ => {}
                 }
             }
@@ -389,6 +404,30 @@ impl<S, N> Catchuper <S, N>
     )->Result<(),()>{
         self.executor.execute_verify_block(block);
         Ok(())
+    }
+
+    fn handle_txns_broadcast(
+        &mut self,
+        peer_id: Endpoint,
+        protocol_msg: &ProtocolsMessage,
+    ) {
+        let mut txns :TransactionSignBrodcast = match ProtocolParser::deserialize(protocol_msg.get_data()) {
+            Ok(value) => value,
+            Err(e) => return,
+        };
+
+        let txns = txns
+            .get_transactions()
+            .iter()
+            .filter_map(|x| {
+                SignedTransaction::try_from(x.to_owned()).ok()
+            })
+            .collect::<Vec<_>>();
+
+        if let Err(e) = self.txns_nofity.unbounded_send(txns) {
+            error!("broadcast transaction send to tx-pool error({:?})", e);
+        }
+
     }
 }
 

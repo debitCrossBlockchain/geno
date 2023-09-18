@@ -23,3 +23,5 @@ parking_lot = "0.11"
 protobuf = { version = "2.27.1", features = ["with-bytes"] }
 chrono = "0.4.19"
 anyhow = "1.0.52"
+futures = "0.3.21"
+tracing = "0.1.29"
