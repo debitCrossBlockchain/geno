@@ -9,6 +9,7 @@ crate-type = ["lib"]
 
 [dependencies]
 utils = { path = "../utils", version = "0.1.0" }
+merkletree = { path = "../utils/merkletree", version = "0.1.0" }
 state = { path = "../state", version = "0.1.0" }
 storage-db = { path = "../storage/storage-db", version = "0.1.0" }
 ledger-store = { path = "../storage/ledger-store", version = "0.1.0" }

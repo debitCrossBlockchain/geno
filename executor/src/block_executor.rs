@@ -3,6 +3,7 @@ use crate::block_verify::Verify;
 use crate::LAST_COMMITTED_BLOCK_INFO_REF;
 use anyhow::bail;
 use ledger_store::LedgerStorage;
+use merkletree::Tree;
 use protos::{
     common::{Validator, ValidatorSet},
     consensus::BftProof,
@@ -142,16 +143,21 @@ impl BlockExecutor {
         // set state hash
         header.set_state_hash(state_root_hash.to_vec());
 
+        let mut base_leafs: Vec<Vec<u8>> = Vec::new();
         // caculate txs hash
         let mut txs_store = HashMap::with_capacity(block.get_transaction_signs().len());
         for (i, t) in txs.iter().enumerate() {
             let mut tx_store = TransactionSignStore::default();
             let tx_hash = t.hash().to_vec();
+            base_leafs.push(tx_hash.clone());
 
             tx_store.set_transaction_sign(block.get_transaction_signs().get(i).unwrap().clone());
             tx_store.set_transaction_result(result.tx_result_set.get(i).unwrap().clone());
             txs_store.insert(tx_hash, tx_store);
         }
+        let mut tree = Tree::new();
+        tree.build(base_leafs.clone());
+        header.set_transactions_hash(tree.root());
 
         // caculate receips hash
 

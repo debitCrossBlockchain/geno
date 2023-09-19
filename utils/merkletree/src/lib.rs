@@ -9,7 +9,7 @@ use std::{
 };
 use utils::general::{hash_bytes_to_string, hash_crypto};
 
-struct Node {
+pub struct Node {
     parent: Vec<u8>,
     children: [Vec<u8>; 2],
     hash: Vec<u8>,
@@ -95,7 +95,7 @@ impl MerkleProofHash {
     }
 }
 
-struct Tree {
+pub struct Tree {
     base: Vec<Vec<Node>>,
     merkle_root: Vec<u8>,
     node_list: HashMap<Vec<u8>, Node>,
@@ -108,6 +108,10 @@ impl Tree {
             merkle_root: Vec::new(),
             node_list: HashMap::new(),
         }
+    }
+
+    pub fn root(&self) -> Vec<u8> {
+        self.merkle_root.clone()
     }
 
     pub fn find_node(&self, hash: Vec<u8>) -> Node {
@@ -167,6 +171,11 @@ impl Tree {
             }
         }
         vect_size
+    }
+
+    pub fn build(&mut self, base_leafs: Vec<Vec<u8>>) {
+        self.build_base_leafs(base_leafs);
+        self.build_tree();
     }
 
     fn build_tree(&mut self) {
