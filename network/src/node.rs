@@ -58,52 +58,52 @@ impl Node {
         let (reader_data_sender,reader_data_recver) = bounded(1024);
         let (reader_msg_sender,reader_msg_recver) = bounded(1024);
         let (handler, node_listener) = node::split::<()>();
-        match handler.network().listen(Transport::Udp, listen_addr) {
+        match handler.network().listen(Transport::FramedTcp, listen_addr) {
             Ok((id, addr)) => {
-                let listen_endpoint= Endpoint::from_listener(id, addr);
                 info!(parent: &span, "start listen {} {}", id, addr);
-                let node = Node(Arc::new(InnerNode {
-                    name:name.to_string(),
-                    config_type,
-                    span,
-                    handler,
-                    tasks: Default::default(),
-                    async_tasks:Default::default(),
-                    connections: Default::default(),
-                    reader_data_sender,
-                    reader_data_recver,
-                    reader_msg_sender,
-                    reader_msg_recver,
-                    listen_endpoint
-                }));
-        
-                let node_clone = node.clone();
-                let task = node_listener.for_each_async(move |event| match event.network() {
-                    NetEvent::Connected(endpoint, established) => {
-                        info!(parent:node_clone.span(),"Event Connected endpoint({}--{} {}) {}",endpoint.addr(),endpoint.resource_id(),endpoint.resource_id().raw(),established);
-                        node_clone.connected_proc(endpoint,established);  
-                    }
-                    NetEvent::Accepted(endpoint, id) => {
-                        info!(parent:node_clone.span(),"Event Accepted endpoint({}--{} {}) resource_id({})",endpoint.addr(),endpoint.resource_id(),endpoint.resource_id().raw(),id);
-                        node_clone.accept_proc(endpoint);                
-                    }
-                    NetEvent::Message(endpoint, _data) => {
-                        // info!(parent:node_clone.span(),"Event Message {} ",endpoint.addr());
-                        node_clone.message_proc(endpoint,_data); 
-                    }
-                    NetEvent::Disconnected(endpoint) => {
-                        info!(parent:node_clone.span(),"Event Disconnected {} ",endpoint.addr());
-                        node_clone.disconnected_proc(endpoint); 
-                    }
-                });
-                node.tasks.lock().push(task);
-                return node;
             }
             Err(e) => {
                 error!(parent: &span, "start listen error {} ", e);
                 std::process::exit(-1);
             }
         };
+        let listen_endpoint  = Self::generate_listen_endpoint(listen_addr);
+        let node = Node(Arc::new(InnerNode {
+            name:name.to_string(),
+            config_type,
+            span,
+            handler,
+            tasks: Default::default(),
+            async_tasks:Default::default(),
+            connections: Default::default(),
+            reader_data_sender,
+            reader_data_recver,
+            reader_msg_sender,
+            reader_msg_recver,
+            listen_endpoint
+        }));
+
+        let node_clone = node.clone();
+        let task = node_listener.for_each_async(move |event| match event.network() {
+            NetEvent::Connected(endpoint, established) => {
+                info!(parent:node_clone.span(),"Event Connected endpoint({}--{} {}) {}",endpoint.addr(),endpoint.resource_id(),endpoint.resource_id().raw(),established);
+                node_clone.connected_proc(endpoint,established);  
+            }
+            NetEvent::Accepted(endpoint, id) => {
+                info!(parent:node_clone.span(),"Event Accepted endpoint({}--{} {}) resource_id({})",endpoint.addr(),endpoint.resource_id(),endpoint.resource_id().raw(),id);
+                node_clone.accept_proc(endpoint);                
+            }
+            NetEvent::Message(endpoint, _data) => {
+                // info!(parent:node_clone.span(),"Event Message {} ",endpoint.addr());
+                node_clone.message_proc(endpoint,_data); 
+            }
+            NetEvent::Disconnected(endpoint) => {
+                info!(parent:node_clone.span(),"Event Disconnected {} ",endpoint.addr());
+                node_clone.disconnected_proc(endpoint); 
+            }
+        });
+        node.tasks.lock().push(task);
+        node
     }
 
     /// Returns the tracing [`Span`] associated with the node.
@@ -116,7 +116,7 @@ impl Node {
         match self
             .handler
             .network()
-            .connect(Transport::Udp, server_addr)
+            .connect(Transport::FramedTcp, server_addr)
         {
             Ok((server_endpoint, client_address)) => {
                 info!(parent:self.span(),"connect to {} result {} -- {}",server_addr,server_endpoint.addr(),client_address);
@@ -211,7 +211,15 @@ impl Node {
 
     pub fn get_all_ready_timeout(&self)-> HashSet<(Endpoint, Instant)>{
         self.connections.get_all_ready_timeout()
-    }   
+    } 
+
+    pub fn generate_listen_endpoint(listen_addr:&str)->Endpoint{
+        let (handler, listener) = node::split::<()>();
+        let (sender_id, addr_1) = handler.network().listen(Transport::Udp, listen_addr).unwrap();
+        let endpoint = Endpoint::from_listener(sender_id, addr_1);
+        handler.stop();
+        endpoint
+    }  
 }
 
 fn create_span(node_name: &str) -> Span {
