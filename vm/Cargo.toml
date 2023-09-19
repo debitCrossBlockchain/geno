@@ -15,7 +15,8 @@ ledger-store = { path = "../storage/ledger-store", version = "0.1.0" }
 state-store = { path = "../storage/state-store", version = "0.1.0" }
 protos = { path = "../protos", version = "0.1.0" }
 protobuf = { version = "2.27.1", features = ["with-bytes"] }
-
+wasmtime ={version = "9.0.0"}
+anyhow = "1.0.62"
 
 tracing = { version = "0.1", default-features = false }
 derive_more = "0.99"
