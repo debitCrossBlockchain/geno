@@ -29,6 +29,7 @@ codec_type = "default"
 
 
 [db]
+db_type = "rockdb"
 key_vaule_max_open_files = 1000
 account_db_path = "./data/account.db"
 ledger_db_path = "./data/ledger.db"

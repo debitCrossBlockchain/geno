@@ -660,6 +660,13 @@ impl PeerNetwork {
         self.node().listen_endpoint
     }
 
+    pub fn add_subscribers(
+        &self,
+        topic: &[ProtocolsMessageType],
+    ) -> LocalBusSubscriber<ProtocolsMessageType, ReturnableProtocolsMessage> {
+        self.bus.add_subscriber(topic)
+    }
+
     pub fn add_subscriber(
         &self,
         topic: ProtocolsMessageType,

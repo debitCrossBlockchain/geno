@@ -37,7 +37,11 @@ impl Cmd{
 
 #[inline]
 pub fn run()->Result<()>{
-    Cmd::parse().run()
+    //Cmd::parse().run()
+    match Cmd::try_parse(){
+        Ok(cmd) => cmd.run(),
+        Err(_) => Ok(()),
+    }
 }
 
 

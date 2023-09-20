@@ -1,14 +1,15 @@
 use std::collections::HashSet;
 
 use anyhow::{Ok, bail};
-use network::{Endpoint, PeerNetwork};
-use protos::common::ProtocolsMessage;
+use network::{Endpoint, PeerNetwork, LocalBusSubscriber, ReturnableProtocolsMessage};
+use protos::common::{ProtocolsMessage, ProtocolsMessageType};
 
 
 
 
 
 pub trait CatchupNetworkInterace{
+    fn add_subscribers(&self, topics: &[ProtocolsMessageType])->LocalBusSubscriber<ProtocolsMessageType, ReturnableProtocolsMessage>;
     fn select_peers(&self)->Option<HashSet<Endpoint>>;
     fn send_msg(&self, id:Endpoint, msg:ProtocolsMessage)->anyhow::Result<()>;
     fn broadcast_msg(&self, msg: ProtocolsMessage)->anyhow::Result<()>;
@@ -34,6 +35,10 @@ impl CatchupNetwork{
     pub fn broadcast_msg(&self, msg: ProtocolsMessage)->bool{
         self.inner.broadcast_msg(msg)
     }
+
+    fn add_subscribers(&self, topics: &[ProtocolsMessageType])->LocalBusSubscriber<ProtocolsMessageType, ReturnableProtocolsMessage>{
+        self.inner.add_subscribers(topics)
+    } 
 }
 
 impl CatchupNetworkInterace for CatchupNetwork{
@@ -58,5 +63,8 @@ impl CatchupNetworkInterace for CatchupNetwork{
         }else{
             bail!("broadcast fail!")
         }
+    }
+    fn add_subscribers(&self, topics: &[ProtocolsMessageType])->LocalBusSubscriber<ProtocolsMessageType, ReturnableProtocolsMessage>{
+        self.add_subscribers(topics)
     }
 }

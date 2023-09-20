@@ -1,6 +1,6 @@
 
 mod notification;
-mod catchup;
+pub mod catchuper;
 mod catchup_status;
-mod storage_executor;
-mod network;
+pub mod storage_executor;
+pub mod network;
