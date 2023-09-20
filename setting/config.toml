@@ -45,3 +45,29 @@ consensus_type = "pbft"
 block_max_tx_size = 1000
 block_max_contract_size = 100
 commit_interval = 10
+
+
+[jsonrpc]
+address = "0.0.0.0:8081"
+batch_size_limit = 20
+page_size_limit = 1000
+content_length_limit = 1048576
+#tls_cert_path = "setting/tls/ca.crt"
+#tls_key_path = "setting/tls/ca.key"
+
+
+[tx_pool]
+capacity = 1_000_000
+capacity_per_user = 10000
+default_failovers = 3
+max_broadcasts_per_peer = 1
+mempool_snapshot_interval_secs = 180
+ack_timeout_ms = 2_000
+backoff_interval_ms = 30_000
+batch_size = 100000
+tick_interval_ms = 50
+max_concurrent_inbound_syncs = 20
+system_transaction_timeout_secs = 600
+system_transaction_gc_interval_ms = 60_000
+broadcast_max_batch_size = 30
+broadcast_transaction_interval_ms = 1000
