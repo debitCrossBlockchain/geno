@@ -1,4 +1,4 @@
-use crate::types::{Status, StatusCode};
+use crate::types::{TxPoolStatus, TxPoolStatusCode};
 use crate::{
     index::{AccountTransactions, PriorityIndex, PriorityQueueIter, TTLIndex},
     transaction::{PoolTransaction, TxState},
@@ -65,8 +65,7 @@ impl Store {
     }
 
     /// Insert transaction into TransactionStore. Performs validation checks and updates indexes.
-    pub(crate) fn insert(&mut self, mut txn: PoolTransaction) -> Status {
-        let tx_hash = txn.get_hash().to_vec();
+    pub(crate) fn insert(&mut self, mut txn: PoolTransaction) -> TxPoolStatus {
         let address = txn.get_sender().to_string();
         let seq_info = txn.get_seq_info();
 
@@ -78,28 +77,28 @@ impl Store {
             if let Some(current_version) = txns.get_mut(&seq_info.tx_seq) {
                 // already have same tx
                 if current_version.get_hash() == txn.get_hash() {
-                    return Status::new(StatusCode::Pending);
+                    return TxPoolStatus::new(TxPoolStatusCode::Accepted);
                 }
 
-                if current_version.get_gas_price() < txn.get_gas_price() {
+                if current_version.txn.gas_limit() == txn.txn.gas_limit()
+                    && current_version.txn.payload() == txn.txn.payload()
+                    && current_version.txn.value() == txn.txn.value()
+                    && current_version.txn.to() == txn.txn.to()
+                    && current_version.get_gas_price() < txn.get_gas_price()
+                {
                     if let Some(txn) = txns.remove(&txn.get_seq()) {
                         self.index_remove(&txn);
                     }
                 } else {
-                    return Status::new(StatusCode::InvalidSeqNumber).with_message(
-                        format!(
-                            "this transacetion's nonce({}) is too old,you need update nonce,sender({}) have submitted a transaction({}) witch is same nonce",
-                            seq_info.tx_seq,
-                            address,
-                            String::from_utf8_lossy(current_version.get_hash().as_ref())
-                        ),
+                    return TxPoolStatus::new(TxPoolStatusCode::InvalidUpdate).with_message(
+                        format!("Failed to update gas price to {}", txn.get_gas_price()),
                     );
                 }
             }
         }
 
         if self.system_ttl_index.size() >= self.capacity {
-            return Status::new(StatusCode::IsFull).with_message(format!(
+            return TxPoolStatus::new(TxPoolStatusCode::IsFull).with_message(format!(
                 "pool size: {}, capacity: {}",
                 self.system_ttl_index.size(),
                 self.capacity,
@@ -113,11 +112,13 @@ impl Store {
         if let Some(txns) = self.transactions.get_mut(&address) {
             // capacity check
             if txns.len() >= self.capacity_per_user {
-                return Status::new(StatusCode::TooManyTransactions).with_message(format!(
-                    "txns length: {} capacity per user: {}",
-                    txns.len(),
-                    self.capacity_per_user,
-                ));
+                return TxPoolStatus::new(TxPoolStatusCode::TooManyTransactions).with_message(
+                    format!(
+                        "txns length: {} capacity per user: {}",
+                        txns.len(),
+                        self.capacity_per_user,
+                    ),
+                );
             }
             txn.state = TxState::Ready;
             if txn.txn.source_type == protos::ledger::TransactionSign_SourceType::P2P {
@@ -130,11 +131,7 @@ impl Store {
             txns.insert(seq_info.tx_seq, txn);
         }
 
-        let status = Status::new(StatusCode::Accepted);
-        let hash = String::from_utf8(tx_hash).unwrap();
-        let result = status.with_message(hash);
-
-        result
+        TxPoolStatus::new(TxPoolStatusCode::Accepted)
     }
 
     fn clean_committed(&mut self, address: &str, seq: u64) {
@@ -186,12 +183,6 @@ impl Store {
                 if let Some(txn) = txns.remove(&key.seq) {
                     // remove txn index
                     self.index_remove(&txn);
-                    info!(
-                        "gc tx {} {} {}",
-                        txn.get_sender(),
-                        txn.get_seq(),
-                        String::from_utf8(txn.get_hash().to_vec()).unwrap(),
-                    );
                 }
             }
         }

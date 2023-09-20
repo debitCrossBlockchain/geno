@@ -171,6 +171,7 @@ impl LedgerUpgradeInstance {
             let sig = match utils::verify_sign::sign(
                 &node_private_key(),
                 ProtocolParser::serialize(&notify).as_slice(),
+                "eddsa_ed25519",
             ) {
                 Ok(value) => value,
                 Err(e) => {

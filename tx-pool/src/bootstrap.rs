@@ -2,14 +2,18 @@ use crate::pool::Pool;
 use crate::transaction::TxState;
 use crate::types::{
     get_account_nonce_banace, BroadCastTxSender, BroadcastTxReceiver, ClientReceiver,
-    CommitNotification, CommitNotificationReceiver, CommitNotificationSender, Shared, Status,
-    StatusCode, SubmissionStatusBundle, Validation, Validator,
+    CommitNotification, CommitNotificationReceiver, CommitNotificationSender, Shared,
+    SubmissionStatusBundle, TxPoolStatus, TxPoolStatusCode, TxPoolValidationStatusCode, Validation,
+    Validator,
 };
 use crate::TX_POOL_INSTANCE_REF;
 use anyhow::Result;
-use futures::channel::oneshot;
-use futures::future::{Future, FutureExt};
-use futures::StreamExt;
+use futures::{
+    channel::oneshot,
+    future::{Future, FutureExt},
+    StreamExt,
+};
+
 use network::PeerNetwork;
 use parking_lot::RwLock;
 use rayon::prelude::*;
@@ -17,15 +21,17 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::runtime::{Builder, Handle, Runtime};
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
-use tokio::task::JoinHandle;
-use tokio::time::interval;
+use tokio::{
+    runtime::{Builder, Handle, Runtime},
+    sync::{OwnedSemaphorePermit, Semaphore},
+    task::JoinHandle,
+    time::interval,
+};
 use tokio_stream::wrappers::IntervalStream;
 use tracing::*;
 use types::SignedTransaction;
-pub type SubmissionStatus = (Status, Option<StatusCode>);
-const TEST_TXPOOL_INCHANNEL_AND_SWPAN: bool = false;
+pub type SubmissionStatus = (TxPoolStatus, Option<TxPoolValidationStatusCode>);
+
 #[derive(Clone, Debug)]
 pub struct BoundedExecutor {
     semaphore: Arc<Semaphore>,
@@ -147,9 +153,7 @@ pub(crate) async fn process_client_submission<V>(
 {
     let statuses = process_incoming(&smp, vec![transaction], TxState::NotReady);
     if let Some(status) = statuses.get(0) {
-        if callback.send(Ok(status.1.clone())).is_err() {
-            // counters::CLIENT_CALLBACK_FAIL.inc();
-        }
+        if callback.send(Ok(status.1.clone())).is_err() {}
     }
 }
 
@@ -164,23 +168,13 @@ where
     V: Validation,
 {
     let mut statuses = vec![];
-    if TEST_TXPOOL_INCHANNEL_AND_SWPAN {
-        for txn in transactions {
-            let status = Status::new(StatusCode::Accepted);
-            let tx_hash = txn.hash();
-            let hash = String::from_utf8(Vec::from(tx_hash)).unwrap();
-            let result = status.with_message(hash);
-            statuses.push((txn, (result, None)));
-        }
-        return statuses;
-    }
 
     // Track latency: fetching seq number
     let nonce_and_banace_vec = transactions
         .par_iter()
         .map(|t| {
             get_account_nonce_banace(t.sender()).map_err(|e| {
-                error!("TransactionValidation get account error");
+                error!("txpool: get state error");
                 e
             })
         })
@@ -193,18 +187,14 @@ where
             if let Ok((seq, banace)) = nonce_and_banace_vec[idx] {
                 if tx.nonce() > seq {
                     //check balance for limit fee
-                    if utils::general::fees_config().consume_gas {
-                        if tx.gas_limit() > banace {
-                            statuses.push((
-                                tx,
-                                (
-                                    Status::new(StatusCode::VmError),
-                                    Some(StatusCode::InsufficientBalanceFee),
-                                ),
-                            ));
-                        } else {
-                            return Some((tx, seq));
-                        }
+                    if tx.gas_limit() as u128 * tx.gas_price() > banace {
+                        statuses.push((
+                            tx,
+                            (
+                                TxPoolStatus::new(TxPoolStatusCode::ValidationError),
+                                Some(TxPoolValidationStatusCode::InsufficientBalanceFee),
+                            ),
+                        ));
                     } else {
                         return Some((tx, seq));
                     }
@@ -212,8 +202,8 @@ where
                     statuses.push((
                         tx,
                         (
-                            Status::new(StatusCode::VmError),
-                            Some(StatusCode::SeqTooOld),
+                            TxPoolStatus::new(TxPoolStatusCode::ValidationError),
+                            Some(TxPoolValidationStatusCode::SeqTooOld),
                         ),
                     ));
                 }
@@ -222,8 +212,8 @@ where
                 statuses.push((
                     tx,
                     (
-                        Status::new(StatusCode::VmError),
-                        Some(StatusCode::ResourceDoesNotExist),
+                        TxPoolStatus::new(TxPoolStatusCode::ValidationError),
+                        Some(TxPoolValidationStatusCode::ResourceDoesNotExist),
                     ),
                 ));
             }
@@ -236,6 +226,7 @@ where
         .par_iter()
         .map(|t| smp.validator.read().validate(&t.0))
         .collect::<Vec<_>>();
+
     {
         let mut pool = smp.pool.write();
         for (idx, (transaction, seq)) in transactions.into_iter().enumerate() {
@@ -247,8 +238,11 @@ where
                     }
                     Some(validation_status) => {
                         statuses.push((
-                            transaction.clone(),
-                            (Status::new(StatusCode::VmError), Some(validation_status)),
+                            transaction,
+                            (
+                                TxPoolStatus::new(TxPoolStatusCode::ValidationError),
+                                Some(validation_status),
+                            ),
                         ));
                     }
                 }
@@ -280,12 +274,6 @@ where
         .for_each(|(sender, transaction)| {
             pool.write().remove(sender, transaction.max_seq);
         });
-
-    info!(
-        "[tx-pool] txpool-trace process_committed_transactions txs({}) use({})micros",
-        tx_size,
-        start.elapsed().as_micros()
-    );
 }
 
 pub fn start_txpool_service(

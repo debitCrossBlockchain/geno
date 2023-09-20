@@ -3,7 +3,6 @@ pub mod pool;
 mod store;
 mod transaction;
 pub mod types;
-mod verify_pool;
 pub use bootstrap::start_txpool_service;
 pub mod bootstrap;
 

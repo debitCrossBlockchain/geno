@@ -9,21 +9,22 @@ use std::{
     sync::Arc,
 };
 use types::SignedTransaction;
-
-use crate::verify_pool::*;
-use msp::signing::{create_context, create_public_key_by_bytes};
+use utils::{
+    verify_pool::{verify_pool_exist, verify_pool_set},
+    verify_sign::verify_sign,
+};
 
 /// A `Status` is represented as a required status code that is semantic coupled with an optional sub status and message.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-pub struct Status {
+pub struct TxPoolStatus {
     /// insertion status code
-    pub code: StatusCode,
+    pub code: TxPoolStatusCode,
     /// optional message
     pub message: String,
 }
 
-impl Status {
-    pub fn new(code: StatusCode) -> Self {
+impl TxPoolStatus {
+    pub fn new(code: TxPoolStatusCode) -> Self {
         Self {
             code,
             message: "".to_string(),
@@ -40,7 +41,7 @@ impl Status {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
 // #[cfg_attr(any(test, feature = "fuzzing"), derive(Arbitrary))]
 #[repr(u64)]
-pub enum StatusCode {
+pub enum TxPoolStatusCode {
     // Transaction was accepted by
     Accepted = 0,
     // Sequence number is old, etc.
@@ -51,65 +52,60 @@ pub enum StatusCode {
     TooManyTransactions = 3,
     // Invalid update. Only gas price increase is allowed
     InvalidUpdate = 4,
-    // transaction didn't pass vm_validation
-    VmError = 5,
+    // transaction didn't pass validation
+    ValidationError = 5,
 
-    Pending = 6,
-
-    // The transaction has a bad signature
-    InvalidSignature = 7,
-    // Bad account authentication key
-    InvalidAuthKey = 8,
-    // Sequence number is too old
-    SeqTooOld = 9,
-    // Sequence number is too new
-    SeqTooNew = 10,
-    // Insufficient balance to pay minimum transaction fee
-    InsufficientBalanceFee = 11,
-    // The transaction has expired
-    TransactionExpired = 12,
-    // The sending account does not exist
-    AccountDoesNotExist = 13,
-    ResourceDoesNotExist = 14,
-    UnknownStatus = 15,
+    UnknownStatus = 6,
 }
 
-impl TryFrom<u64> for StatusCode {
+impl TryFrom<u64> for TxPoolStatusCode {
     type Error = &'static str;
 
     fn try_from(value: u64) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(StatusCode::Accepted),
-            1 => Ok(StatusCode::InvalidSeqNumber),
-            2 => Ok(StatusCode::IsFull),
-            3 => Ok(StatusCode::TooManyTransactions),
-            4 => Ok(StatusCode::InvalidUpdate),
-            5 => Ok(StatusCode::VmError),
-            6 => Ok(StatusCode::Pending),
-            7 => Ok(StatusCode::InvalidSignature),
-            8 => Ok(StatusCode::InvalidAuthKey),
-            9 => Ok(StatusCode::SeqTooOld),
-            10 => Ok(StatusCode::SeqTooNew),
-            11 => Ok(StatusCode::InsufficientBalanceFee),
-            12 => Ok(StatusCode::TransactionExpired),
-            13 => Ok(StatusCode::AccountDoesNotExist),
-            14 => Ok(StatusCode::ResourceDoesNotExist),
-            15 => Ok(StatusCode::UnknownStatus),
+            0 => Ok(TxPoolStatusCode::Accepted),
+            1 => Ok(TxPoolStatusCode::InvalidSeqNumber),
+            2 => Ok(TxPoolStatusCode::IsFull),
+            3 => Ok(TxPoolStatusCode::TooManyTransactions),
+            4 => Ok(TxPoolStatusCode::InvalidUpdate),
+            5 => Ok(TxPoolStatusCode::ValidationError),
             _ => Err("invalid StatusCode"),
         }
     }
 }
 
-impl From<StatusCode> for u64 {
-    fn from(status: StatusCode) -> u64 {
+impl From<TxPoolStatusCode> for u64 {
+    fn from(status: TxPoolStatusCode) -> u64 {
         status as u64
     }
 }
 
-impl fmt::Display for StatusCode {
+impl fmt::Display for TxPoolStatusCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
+// #[cfg_attr(any(test, feature = "fuzzing"), derive(Arbitrary))]
+#[repr(u64)]
+pub enum TxPoolValidationStatusCode {
+    // The transaction has a bad signature
+    InvalidSignature = 1,
+    // Bad account authentication key
+    InvalidAuthKey = 2,
+    // Sequence number is too old
+    SeqTooOld = 3,
+    // Sequence number is too new
+    SeqTooNew = 4,
+    // Insufficient balance to pay minimum transaction fee
+    InsufficientBalanceFee = 5,
+    // The transaction has expired
+    TransactionExpired = 6,
+    //
+    ResourceDoesNotExist = 8,
+    //
+    UnknownStatus = 9,
 }
 
 pub trait Validation: Send + Sync + Clone {
@@ -134,21 +130,22 @@ impl Validation for Validator {
             if verify_pool_exist(txn.hash()) {
                 continue;
             }
-            let ctx = create_context(signature.get_encryption_type()).unwrap();
 
-            let pub_key = create_public_key_by_bytes(
-                signature.get_encryption_type(),
-                signature.get_public_key(),
-            );
-            if pub_key.is_err() {
-                return Ok(ValidatorResult::new(Some(StatusCode::InvalidSignature), 0));
-            }
-            let result = ctx.verify(signature.get_sign_data(), txn.hash(), &*pub_key.unwrap());
-            if result.is_err() {
-                return Ok(ValidatorResult::new(Some(StatusCode::InvalidSignature), 0));
-            }
-            if !result.unwrap() {
-                return Ok(ValidatorResult::new(Some(StatusCode::InvalidSignature), 0));
+            match verify_sign(&signature, &txn.hash()) {
+                Ok(value) => {
+                    if !value {
+                        return Ok(ValidatorResult::new(
+                            Some(TxPoolValidationStatusCode::InvalidSignature),
+                            0,
+                        ));
+                    }
+                }
+                Err(e) => {
+                    return Ok(ValidatorResult::new(
+                        Some(TxPoolValidationStatusCode::InvalidSignature),
+                        0,
+                    ));
+                }
             }
 
             // insert tx verify pool
@@ -163,7 +160,7 @@ impl Validation for Validator {
 pub struct ValidatorResult {
     /// Result of the validation: `None` if the transaction was successfully validated
     /// or `Some(DiscardedStatusCode)` if the transaction should be discarded.
-    status: Option<StatusCode>,
+    status: Option<TxPoolValidationStatusCode>,
 
     /// Score for ranking the transaction priority (e.g., based on the gas price).
     /// Only used when the status is `None`. Higher values indicate a higher priority.
@@ -171,14 +168,14 @@ pub struct ValidatorResult {
 }
 
 impl ValidatorResult {
-    pub fn new(vm_status: Option<StatusCode>, score: u128) -> Self {
+    pub fn new(validation_status: Option<TxPoolValidationStatusCode>, score: u128) -> Self {
         Self {
-            status: vm_status,
+            status: validation_status,
             score,
         }
     }
 
-    pub fn status(&self) -> Option<StatusCode> {
+    pub fn status(&self) -> Option<TxPoolValidationStatusCode> {
         self.status
     }
 
@@ -279,7 +276,7 @@ pub enum ConsensusResponse {
     CommitResponse(),
 }
 
-pub type SubmissionStatus = (Status, Option<StatusCode>);
+pub type SubmissionStatus = (TxPoolStatus, Option<TxPoolValidationStatusCode>);
 pub type SubmissionStatusBundle = (SignedTransaction, SubmissionStatus);
 pub type ClientSender =
     mpsc::UnboundedSender<(SignedTransaction, oneshot::Sender<Result<SubmissionStatus>>)>;
@@ -290,14 +287,6 @@ pub type CommitNotificationReceiver = mpsc::Receiver<CommitNotification>;
 pub type BroadCastTxSender = mpsc::UnboundedSender<Vec<SignedTransaction>>;
 pub type BroadcastTxReceiver = mpsc::UnboundedReceiver<Vec<SignedTransaction>>;
 
-pub fn get_account_nonce_banace(_account_address: &str) -> Result<(u64, u64)> {
-    // for i in 0..3 {
-    //     let last_state = { LastLedgerStateRef.read().get() };
-    //     if let Some((nonce, balance)) =
-    //         state::reading_trie_get_nonce_banace(account_address, &last_state.get_tire_hash())
-    //     {
-    //         return Ok((nonce, balance));
-    //     }
-    // }
+pub fn get_account_nonce_banace(_account_address: &str) -> Result<(u64, u128)> {
     Err(anyhow::anyhow!("get_account_nonce_banace failed"))
 }

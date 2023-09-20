@@ -26,6 +26,5 @@ msp = { path = "../msp", version = "0.1.0" }
 utils = { path = "../utils", version = "0.1.0" }
 once_cell = "1.9.0"
 lazy_static = "1.4.0"
-lru-cache = "0.1"
 anyhow = "1.0.52"
 sha3 = "0.10.5"

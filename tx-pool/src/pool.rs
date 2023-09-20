@@ -1,6 +1,6 @@
 //! pool is used to track transactions which have been submitted but not yet
 //! agreed upon.
-use crate::types::{Committed, Status, StatusCode};
+use crate::types::{Committed, TxPoolStatus, TxPoolStatusCode};
 use crate::{
     index::PriorityIndex,
     store::Store,
@@ -80,18 +80,14 @@ impl Pool {
         self.transactions.commit(sender, new_seq + 1);
     }
 
-    /// Used to add a transaction to the pool.
-    /// Performs basic validation: checks account's sequence number.
-    // pub(crate) fn add(
-    pub fn add(&mut self, txn: SignedTransaction, seq: u64, state: TxState) -> Status {
-        //todo log transaction
+    pub fn add(&mut self, txn: SignedTransaction, seq: u64, state: TxState) -> TxPoolStatus {
         let cached_value = self.seq_cache.get(txn.sender());
         let seq = cached_value.map_or(seq, |value| max(*value, seq));
         self.seq_cache.insert(txn.sender().to_string(), seq);
 
         // don't accept old transactions (e.g. seq is less than account's current seq_number)
         if txn.nonce() <= seq {
-            return Status::new(StatusCode::InvalidSeqNumber).with_message(format!(
+            return TxPoolStatus::new(TxPoolStatusCode::InvalidSeqNumber).with_message(format!(
                 "transaction sequence number is {}, account sequence number is  {}",
                 txn.nonce(),
                 seq
@@ -101,7 +97,7 @@ impl Pool {
         let expiration_time = duration_since_epoch() + self.transaction_timeout;
         let txn_info = PoolTransaction::new(txn.clone(), expiration_time, state, seq);
         let status = self.transactions.insert(txn_info);
-        if status.code == StatusCode::Accepted
+        if status.code == TxPoolStatusCode::Accepted
             && (txn.source_type == protos::ledger::TransactionSign_SourceType::JSONRPC
                 || txn.source_type == protos::ledger::TransactionSign_SourceType::WEBSOCKET)
         {

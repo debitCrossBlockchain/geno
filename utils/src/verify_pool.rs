@@ -1,9 +1,6 @@
-use parking_lot::RwLock;
 use std::collections::HashSet;
 
-lazy_static! {
-    pub static ref POOL_VERIFY_REF: RwLock<PoolVerify> = RwLock::new(PoolVerify::default());
-}
+use crate::POOL_VERIFY_REF;
 
 pub struct PoolVerify {
     pool: HashSet<Vec<u8>>,

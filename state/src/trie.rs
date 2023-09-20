@@ -9,7 +9,7 @@ use trie_db::{Trie, TrieDBBuilder, TrieDBMutBuilder, TrieMut};
 pub type TrieHash = <KeccakHasher as Hasher>::Out;
 
 pub struct TrieReader {
-    root: TrieHash,
+    pub root: TrieHash,
     trie_db: TrieHashDB,
 }
 

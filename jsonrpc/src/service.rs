@@ -8,7 +8,7 @@ pub(crate) struct JsonRpcService {
     pub chain_id: String,
     batch_size_limit: u16,
     page_size_limit: u16,
-    jsonrpc_to_txpool_sender: ClientSender,
+    pub jsonrpc_to_txpool_sender: ClientSender,
 }
 
 impl JsonRpcService {

@@ -134,7 +134,7 @@ impl BftState {
     }
 
     pub fn sign_data(&self, data: &[u8]) -> Signature {
-        match sign(&self.private_key.as_hex(), data) {
+        match sign(&self.private_key.as_hex(), data, "eddsa_ed25519") {
             Ok(sign_ret) => sign_ret,
             Err(e) => {
                 error!("sign error:{}", e);

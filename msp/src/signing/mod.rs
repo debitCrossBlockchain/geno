@@ -564,7 +564,7 @@ pub fn check_signature(algorithm_name: &str, signature: &str) -> bool {
     return is_hex(signature);
 }
 
-pub fn check_tx_hash(mut hash: &str) -> bool {
+pub fn check_tx_hash(hash: &str) -> bool {
     return hash.len() == TX_HASH_LENGTH && is_hex(hash);
 }
 

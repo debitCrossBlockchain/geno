@@ -96,6 +96,10 @@ impl SignedTransaction {
         }
     }
 
+    pub fn payload(&self) -> &[u8] {
+        &self.payload
+    }
+
     pub fn reserves(&self) -> &ExtendedData {
         &self.reserves
     }

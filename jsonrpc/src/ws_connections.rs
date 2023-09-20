@@ -212,17 +212,17 @@ impl WsConnections {
             if let Some(sub_type) = value.as_str() {
                 if sub_type == TOPIC_TRANSACTIONS {
                     if params.len() != 1 {
-                        return Err(Self::param_err("ws subscribe", "params size error"));
+                        return Err(JsonRpcError::invalid_params_size(format!("ws subscribe")));
                     }
                     return Ok(SubscribeTopic::Transactions(TOPIC_TRANSACTIONS.to_string()));
                 } else if sub_type == TOPIC_HEADERS {
                     if params.len() != 1 {
-                        return Err(Self::param_err("ws subscribe", "params size error"));
+                        return Err(JsonRpcError::invalid_params_size(format!("ws subscribe")));
                     }
                     return Ok(SubscribeTopic::Transactions(TOPIC_HEADERS.to_string()));
                 } else if sub_type == TOPIC_LOGS {
                     if params.len() != 2 {
-                        return Err(Self::param_err("ws subscribe", "params size error"));
+                        return Err(JsonRpcError::invalid_params_size(format!("ws subscribe")));
                     }
 
                     let value = params.get(1).unwrap();
@@ -230,29 +230,28 @@ impl WsConnections {
                     {
                         Ok(logs) => logs,
                         Err(e) => {
-                            return Err(Self::param_err("ws subscribe", "params logs format"));
+                            return Err(JsonRpcError::invalid_parameter(
+                                "ws subscribe",
+                                "params logs format",
+                            ));
                         }
                     };
 
                     return Ok(SubscribeTopic::Logs((TOPIC_LOGS.to_string(), logs)));
                 } else {
-                    return Err(Self::param_err(
+                    return Err(JsonRpcError::invalid_parameter(
                         "ws subscribe",
                         "params subscribe type exception",
                     ));
                 }
             } else {
-                return Err(Self::param_err(
+                return Err(JsonRpcError::invalid_parameter(
                     "ws subscribe",
-                    "params subscribe type null",
+                    "params subscribe type is null",
                 ));
             }
         }
-        return Err(Self::param_err("ws subscribe", "params size error"));
-    }
-
-    fn param_err(name: &str, err_msg: &str) -> JsonRpcError {
-        JsonRpcError::invalid_param("ws subscribe", "params size error")
+        return Err(JsonRpcError::invalid_params_size(format!("ws subscribe")));
     }
 }
 
