@@ -2,9 +2,9 @@ use crate::pool::Pool;
 use crate::transaction::TxState;
 use crate::types::{
     get_account_nonce_banace, BroadCastTxSender, BroadcastTxReceiver, ClientReceiver,
-    CommitNotification, CommitNotificationReceiver, CommitNotificationSender, Shared,
-    SubmissionStatusBundle, TxPoolStatus, TxPoolStatusCode, TxPoolValidationStatusCode, Validation,
-    Validator,
+    CommitNotificationReceiver, CommitNotificationSender, Shared, SubmissionStatusBundle,
+    TxPoolCommitNotification, TxPoolStatus, TxPoolStatusCode, TxPoolValidationStatusCode,
+    Validation, Validator,
 };
 use crate::TX_POOL_INSTANCE_REF;
 use anyhow::Result;
@@ -262,7 +262,7 @@ where
 }
 
 /// Remove transactions that are committed (or rejected) so that we can stop broadcasting them.
-pub(crate) async fn process_committed<V>(smp: Shared<V>, msg: CommitNotification)
+pub(crate) async fn process_committed<V>(smp: Shared<V>, msg: TxPoolCommitNotification)
 where
     V: Validation,
 {

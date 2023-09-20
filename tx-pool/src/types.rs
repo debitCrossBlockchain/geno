@@ -204,15 +204,15 @@ pub enum Notification {
 }
 
 #[derive(Clone)]
-pub struct Committed {
+pub struct TxPoolCommitted {
     pub sender: String,
     pub max_seq: u64,
     pub seqs: HashSet<u64>,
 }
 /// Notification from state sync to pool of commit event.
 /// This notifies pool to remove committed txns.
-pub struct CommitNotification {
-    pub transactions: HashMap<String, Committed>,
+pub struct TxPoolCommitNotification {
+    pub transactions: HashMap<String, TxPoolCommitted>,
     pub count: u64,
 }
 
@@ -282,8 +282,8 @@ pub type ClientSender =
     mpsc::UnboundedSender<(SignedTransaction, oneshot::Sender<Result<SubmissionStatus>>)>;
 pub type ClientReceiver =
     mpsc::UnboundedReceiver<(SignedTransaction, oneshot::Sender<Result<SubmissionStatus>>)>;
-pub type CommitNotificationSender = mpsc::Sender<CommitNotification>;
-pub type CommitNotificationReceiver = mpsc::Receiver<CommitNotification>;
+pub type CommitNotificationSender = mpsc::Sender<TxPoolCommitNotification>;
+pub type CommitNotificationReceiver = mpsc::Receiver<TxPoolCommitNotification>;
 pub type BroadCastTxSender = mpsc::UnboundedSender<Vec<SignedTransaction>>;
 pub type BroadcastTxReceiver = mpsc::UnboundedReceiver<Vec<SignedTransaction>>;
 

@@ -16,7 +16,7 @@ use std::{
 };
 use tracing::{error, info, Span};
 use tx_pool::{
-    types::{CommitNotification, CommitNotificationSender, Committed},
+    types::{CommitNotificationSender, TxPoolCommitNotification, TxPoolCommitted},
     TX_POOL_INSTANCE_REF,
 };
 use utils::{
@@ -50,7 +50,7 @@ pub struct BftConsensus {
     pub(crate) commit_to_txpool_sender: CommitNotificationSender,
     pub(crate) ws_publish_event_sender:
         tokio::sync::mpsc::UnboundedSender<(Ledger, Vec<TransactionResult>)>,
-    pub(crate) last_commit_txs: HashMap<String, Committed>,
+    pub(crate) last_commit_txs: HashMap<String, TxPoolCommitted>,
 }
 
 impl BftConsensus {
@@ -490,7 +490,7 @@ impl BftConsensus {
     pub fn delete_commit_tx(&mut self, block: &Ledger) {
         if block.get_transaction_signs().len() > 0 {
             let mut count = 0;
-            let mut transactions: HashMap<String, Committed> = HashMap::new();
+            let mut transactions: HashMap<String, TxPoolCommitted> = HashMap::new();
             for tx in block.get_transaction_signs().iter() {
                 count += 1;
                 if let Some(v) = transactions.get_mut(tx.get_transaction().get_source()) {
@@ -502,7 +502,7 @@ impl BftConsensus {
                     let sender = tx.get_transaction().get_source().to_string();
                     let mut seqs = HashSet::default();
                     seqs.insert(tx.get_transaction().get_nonce());
-                    let c = Committed {
+                    let c = TxPoolCommitted {
                         sender: sender.clone(),
                         max_seq: tx.get_transaction().get_nonce(),
                         seqs,
@@ -517,7 +517,7 @@ impl BftConsensus {
                 block.get_header().get_height(),
                 transactions.len()
             );
-            let notify = CommitNotification {
+            let notify = TxPoolCommitNotification {
                 transactions,
                 count,
             };

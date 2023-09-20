@@ -1,6 +1,6 @@
 //! pool is used to track transactions which have been submitted but not yet
 //! agreed upon.
-use crate::types::{Committed, TxPoolStatus, TxPoolStatusCode};
+use crate::types::{TxPoolCommitted, TxPoolStatus, TxPoolStatusCode};
 use crate::{
     index::PriorityIndex,
     store::Store,
@@ -176,7 +176,7 @@ impl Pool {
         &self,
         max_tx_size: u64,
         max_contract_size: u64,
-        exclude_txs: &HashMap<String, Committed>,
+        exclude_txs: &HashMap<String, TxPoolCommitted>,
     ) -> Vec<SignedTransaction> {
         let mut txn_walked = 0u64;
         let mut priority_index = PriorityIndex::new();
@@ -210,7 +210,7 @@ impl Pool {
         &self,
         max_tx_size: u64,
         max_contract_size: u64,
-        exclude_txs: &HashMap<String, Committed>,
+        exclude_txs: &HashMap<String, TxPoolCommitted>,
     ) -> Vec<Vec<u8>> {
         let mut txn_walked = 0u64;
         let mut priority_index = PriorityIndex::new();

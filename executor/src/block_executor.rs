@@ -143,8 +143,8 @@ impl BlockExecutor {
         // set state hash
         header.set_state_hash(state_root_hash.to_vec());
 
-        let mut base_leafs: Vec<Vec<u8>> = Vec::new();
         // caculate txs hash
+        let mut base_leafs: Vec<Vec<u8>> = Vec::new();
         let mut txs_store = HashMap::with_capacity(block.get_transaction_signs().len());
         for (i, t) in txs.iter().enumerate() {
             let mut tx_store = TransactionSignStore::default();
