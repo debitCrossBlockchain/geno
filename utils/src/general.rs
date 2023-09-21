@@ -1,4 +1,4 @@
-use configure::{Consensus, Fees, GenesisBlock, CONFIGURE_INSTANCE_REF};
+use configure::{Consensus, GenesisBlock, CONFIGURE_INSTANCE_REF};
 
 pub const MILLI_UNITS_PER_SEC: i64 = 1000;
 
@@ -135,10 +135,6 @@ pub fn consensus_config() -> Consensus {
 
 pub fn genesis_block_config() -> GenesisBlock {
     CONFIGURE_INSTANCE_REF.genesis_block.clone()
-}
-
-pub fn fees_config() -> Fees {
-    CONFIGURE_INSTANCE_REF.fees.clone()
 }
 
 pub fn address_filter_prefix(address: &str) -> String {

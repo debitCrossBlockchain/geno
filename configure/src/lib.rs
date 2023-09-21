@@ -10,25 +10,21 @@ extern crate lazy_static;
 mod configure;
 mod consensus;
 mod db;
-mod fees;
 mod genesis_block;
 mod jsonrpc;
 mod p2p_network;
 mod ssl;
 mod tx_pool;
-mod websocket;
 
 use config::*;
 pub use configure::Configure;
 pub use consensus::Consensus;
 pub use db::Db;
-pub use fees::Fees;
 pub use genesis_block::GenesisBlock;
 pub use jsonrpc::JsonRpcConfig;
 pub use p2p_network::P2PNetwork;
 pub use ssl::SSL;
 pub use tx_pool::TxPoolConfig;
-pub use websocket::WebsocketConfig;
 
 use std::sync::Arc;
 lazy_static! {

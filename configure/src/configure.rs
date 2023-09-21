@@ -1,7 +1,4 @@
-use crate::{
-    Consensus, Db, Fees, GenesisBlock, JsonRpcConfig, P2PNetwork, TxPoolConfig, WebsocketConfig,
-    SSL,
-};
+use crate::{Consensus, Db, GenesisBlock, JsonRpcConfig, P2PNetwork, TxPoolConfig, SSL};
 use serde;
 use serde::Deserialize;
 #[derive(Debug, Deserialize, Clone)]
@@ -18,8 +15,6 @@ pub struct Configure {
     pub db: Db,
     pub genesis_block: GenesisBlock,
     pub consensus: Consensus,
-    pub fees: Fees,
     pub tx_pool: TxPoolConfig,
     pub json_rpc: JsonRpcConfig,
-    pub websocket: WebsocketConfig,
 }

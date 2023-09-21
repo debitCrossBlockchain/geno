@@ -3,6 +3,7 @@ use std::sync::{
     Arc,
 };
 
+use catchup::{catchuper::Catchuper, network::CatchupNetwork, storage_executor::StoreageExecutor};
 use configure::CONFIGURE_INSTANCE_REF;
 use consensus_pbft::bootstrap::start_consensus;
 use executor::BlockExecutor;
@@ -10,7 +11,6 @@ use jsonrpc::bootstrap::start_jsonrpc_service;
 use network::{NetworkConfigType, PeerNetwork};
 use tx_pool::start_txpool_service;
 use utils::{logger::LogUtil, timer_manager::initialize_timer_manager};
-use catchup::{catchuper::Catchuper, network::CatchupNetwork, storage_executor::StoreageExecutor};
 
 fn main() {
     let _guard = LogUtil::init("./log", "app.log", "setting/log_filter.txt").unwrap();
@@ -39,7 +39,11 @@ fn main() {
         network.clone(),
     );
 
-    Catchuper::create_and_start(CatchupNetwork::new(network.clone()), StoreageExecutor::new(BlockExecutor{}), broadcast_tx_sender);
+    Catchuper::create_and_start(
+        CatchupNetwork::new(network.clone()),
+        StoreageExecutor::new(BlockExecutor {}),
+        broadcast_tx_sender,
+    );
 
     start_consensus(
         network,
