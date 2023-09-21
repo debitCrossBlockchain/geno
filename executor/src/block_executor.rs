@@ -4,6 +4,7 @@ use crate::LAST_COMMITTED_BLOCK_INFO_REF;
 use anyhow::bail;
 use ledger_store::LedgerStorage;
 use merkletree::Tree;
+use protobuf::Message;
 use protos::{
     common::{Validator, ValidatorSet},
     consensus::BftProof,
@@ -17,7 +18,7 @@ use storage_db::{MemWriteBatch, WriteBatchTrait, STORAGE_INSTANCE_REF};
 use types::error::BlockExecutionError;
 use types::transaction::SignedTransaction;
 use utils::{
-    general::{genesis_block_config, hash_crypto_byte, hash_zero, self_chain_hub, self_chain_id},
+    general::{genesis_block_config,hash_crypto, hash_crypto_byte, hash_zero, self_chain_hub, self_chain_id},
     parse::ProtocolParser,
 };
 use vm::{EvmExecutor, PostState};
@@ -144,22 +145,29 @@ impl BlockExecutor {
         header.set_state_hash(state_root_hash.to_vec());
 
         // caculate txs hash
-        let mut base_leafs: Vec<Vec<u8>> = Vec::new();
+        let mut txs_leafs: Vec<Vec<u8>> = Vec::new();
+        let mut receips_leafs: Vec<Vec<u8>> = Vec::new();
         let mut txs_store = HashMap::with_capacity(block.get_transaction_signs().len());
         for (i, t) in txs.iter().enumerate() {
             let mut tx_store = TransactionSignStore::default();
             let tx_hash = t.hash().to_vec();
-            base_leafs.push(tx_hash.clone());
 
             tx_store.set_transaction_sign(block.get_transaction_signs().get(i).unwrap().clone());
             tx_store.set_transaction_result(result.tx_result_set.get(i).unwrap().clone());
-            txs_store.insert(tx_hash, tx_store);
+            txs_store.insert(tx_hash.clone(), tx_store);
+            txs_leafs.push(tx_hash.clone());
+            let receips_hash = hash_crypto(&result.tx_result_set.get(i).unwrap().clone().write_to_bytes().unwrap());
+            receips_leafs.push(receips_hash);
         }
-        let mut tree = Tree::new();
-        tree.build(base_leafs.clone());
-        header.set_transactions_hash(tree.root());
+        let mut txs_tree = Tree::new();
+        txs_tree.build(txs_leafs.clone());
+        header.set_transactions_hash(txs_tree.root());
+
 
         // caculate receips hash
+        let mut receips_tree = Tree::new();
+        receips_tree.build(receips_leafs.clone());
+        header.set_receips_hash(receips_tree.root());
 
         // caculate fee hash
 
@@ -290,6 +298,8 @@ impl BlockExecutor {
         };
 
         // caculate txs hash
+        let mut txs_leafs: Vec<Vec<u8>> = Vec::new();
+        let mut receips_leafs: Vec<Vec<u8>> = Vec::new();
         let mut txs_store = HashMap::with_capacity(block.get_transaction_signs().len());
         for (i, t) in txs.iter().enumerate() {
             let mut tx_store = TransactionSignStore::default();
@@ -297,10 +307,22 @@ impl BlockExecutor {
 
             tx_store.set_transaction_sign(block.get_transaction_signs().get(i).unwrap().clone());
             tx_store.set_transaction_result(result.tx_result_set.get(i).unwrap().clone());
-            txs_store.insert(tx_hash, tx_store);
+            txs_store.insert(tx_hash.clone(), tx_store);
+            txs_leafs.push(tx_hash.clone());
+            let receips_hash = hash_crypto(&result.tx_result_set.get(i).unwrap().clone().write_to_bytes().unwrap());
+            receips_leafs.push(receips_hash);
         }
 
         // caculate receips hash
+        let mut txs_tree = Tree::new();
+        txs_tree.build(txs_leafs.clone());
+        header.set_transactions_hash(txs_tree.root());
+
+
+        // caculate receips hash
+        let mut receips_tree = Tree::new();
+        receips_tree.build(receips_leafs.clone());
+        header.set_receips_hash(receips_tree.root());
 
         // caculate fee hash
 
