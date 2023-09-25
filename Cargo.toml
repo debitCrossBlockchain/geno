@@ -25,7 +25,8 @@ members = [
     "consensus/consensus-pbft",
     "consensus/ledger-upgrade",
     "geno-cmd",
-    "tx-pool"
+    "tx-pool",
+    "syscontract",
 ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

@@ -47,7 +47,7 @@ impl Receipt {
         }
 
         contract_result.set_contract_event(events.into());
-        contract_result.set_err_code(if self.success == true { 0 } else { 1 });
+        contract_result.set_err_code(if self.success == true { 0 } else { -1 });
         if let Some(address) = self.contract_address {
             contract_result.set_message(AddressConverter::from_evm_address(address));
         }
@@ -55,6 +55,7 @@ impl Receipt {
             contract_result.set_result(out.to_vec());
         }
 
+        tx_result.set_err_code(contract_result.get_err_code());
         tx_result.set_contract_result(contract_result);
         tx_result.set_gas_used(self.gas_used);
         tx_result.set_index(self.index as u32);

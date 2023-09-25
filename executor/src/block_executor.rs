@@ -4,7 +4,6 @@ use crate::LAST_COMMITTED_BLOCK_INFO_REF;
 use anyhow::bail;
 use ledger_store::LedgerStorage;
 use merkletree::Tree;
-use protobuf::Message;
 use protos::{
     common::{Validator, ValidatorSet},
     consensus::BftProof,
@@ -15,10 +14,11 @@ use state::{cache_state::StateMapActionType, AccountFrame, CacheState, TrieHash,
 use state_store::StateStorage;
 use std::collections::HashMap;
 use storage_db::{MemWriteBatch, WriteBatchTrait, STORAGE_INSTANCE_REF};
+use syscontract::system_address::is_system_contract;
 use types::error::BlockExecutionError;
 use types::transaction::SignedTransaction;
 use utils::{
-    general::{genesis_block_config,hash_crypto, hash_crypto_byte, hash_zero, self_chain_hub, self_chain_id},
+    general::{genesis_block_config, hash_crypto_byte, hash_zero, self_chain_hub, self_chain_id},
     parse::ProtocolParser,
 };
 use vm::{EvmExecutor, PostState};
@@ -52,16 +52,22 @@ impl BlockExecutor {
             let tx_raw = match SignedTransaction::try_from(tx.clone()) {
                 Ok(tx_raw) => tx_raw,
                 Err(e) => {
-                    return Err(BlockExecutionError::TransactionParamError {
+                    let error = BlockExecutionError::TransactionParamError {
                         error: e.to_string(),
-                    })
+                    };
+                    continue;
                 }
             };
-            if let Err(e) = vm.execute(index, &tx_raw, &mut post_state) {
-                return Err(BlockExecutionError::VmError {
-                    error: format!("vm execute error {e:?}"),
-                });
+            if is_system_contract(&tx_raw.sender().to_string()) {
+            } else {
+                if let Err(e) = vm.execute(index, &tx_raw, &mut post_state) {
+                    let error = BlockExecutionError::VmError {
+                        error: format!("vm execute error {e:?}"),
+                    };
+                    continue;
+                }
             }
+
             tx_array.push(tx_raw);
         }
         if let Err(e) = post_state.convert_to_geno_state(header.get_height(), state.clone()) {

@@ -6,6 +6,7 @@ use protos::{
     ledger::{TransactionSign, TransactionSignStore},
 };
 use serde::{Deserialize, Serialize};
+use syscontract::system_address::is_system_contract;
 use utils::{
     general::{hash_crypto_byte, self_chain_hub, self_chain_id},
     parse::ProtocolParser,
@@ -197,14 +198,20 @@ impl TransactionRaw {
         }
         protocol_tx.set_value(self.value.clone());
 
-        if let Some(payload) = &self.payload {
-            match hex::decode(payload) {
-                Ok(value) => protocol_tx.set_payload(value),
-                Err(e) => {
-                    return Err(Error::new(JsonRpcError::invalid_parameter(
-                        "payload",
-                        "decode error",
-                    )))
+        if is_system_contract(&self.source) {
+            if let Some(payload) = &self.payload {
+                protocol_tx.set_payload(payload.as_bytes().to_vec());
+            }
+        } else {
+            if let Some(payload) = &self.payload {
+                match hex::decode(payload) {
+                    Ok(value) => protocol_tx.set_payload(value),
+                    Err(e) => {
+                        return Err(Error::new(JsonRpcError::invalid_parameter(
+                            "payload",
+                            "decode error",
+                        )))
+                    }
                 }
             }
         }
