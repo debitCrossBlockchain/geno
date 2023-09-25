@@ -5,7 +5,7 @@ use anyhow::bail;
 use ledger_store::LedgerStorage;
 use merkletree::Tree;
 use protos::{
-    common::{Validator, ValidatorSet},
+    common::{TransactionResult, Validator, ValidatorSet},
     consensus::BftProof,
     ledger::*,
 };
@@ -162,13 +162,15 @@ impl BlockExecutor {
             tx_store.set_transaction_result(result.tx_result_set.get(i).unwrap().clone());
             txs_store.insert(tx_hash.clone(), tx_store);
             txs_leafs.push(tx_hash.clone());
-            let receips_hash = hash_crypto(&result.tx_result_set.get(i).unwrap().clone().write_to_bytes().unwrap());
+
+            let receips_hash = hash_crypto_byte(&ProtocolParser::serialize::<TransactionResult>(
+                result.tx_result_set.get(i).unwrap(),
+            ));
             receips_leafs.push(receips_hash);
         }
         let mut txs_tree = Tree::new();
         txs_tree.build(txs_leafs.clone());
         header.set_transactions_hash(txs_tree.root());
-
 
         // caculate receips hash
         let mut receips_tree = Tree::new();
@@ -315,7 +317,9 @@ impl BlockExecutor {
             tx_store.set_transaction_result(result.tx_result_set.get(i).unwrap().clone());
             txs_store.insert(tx_hash.clone(), tx_store);
             txs_leafs.push(tx_hash.clone());
-            let receips_hash = hash_crypto(&result.tx_result_set.get(i).unwrap().clone().write_to_bytes().unwrap());
+            let receips_hash = hash_crypto_byte(&ProtocolParser::serialize::<TransactionResult>(
+                result.tx_result_set.get(i).unwrap(),
+            ));
             receips_leafs.push(receips_hash);
         }
 
@@ -323,7 +327,6 @@ impl BlockExecutor {
         let mut txs_tree = Tree::new();
         txs_tree.build(txs_leafs.clone());
         header.set_transactions_hash(txs_tree.root());
-
 
         // caculate receips hash
         let mut receips_tree = Tree::new();
