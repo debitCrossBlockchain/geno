@@ -16,4 +16,4 @@ anyhow = "1.0.52"
 rusty-leveldb = "2.0.0"
 
 [target.'cfg(unix)'.dependencies]
-rocksdb = "0.16.0"
+rocksdb = "0.21.0"

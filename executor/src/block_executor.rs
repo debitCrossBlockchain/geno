@@ -168,14 +168,18 @@ impl BlockExecutor {
             ));
             receips_leafs.push(receips_hash);
         }
-        let mut txs_tree = Tree::new();
-        txs_tree.build(txs_leafs.clone());
-        header.set_transactions_hash(txs_tree.root());
+        if txs_leafs.len() > 0 {
+            let mut txs_tree = Tree::new();
+            txs_tree.build(txs_leafs.clone());
+            header.set_transactions_hash(txs_tree.root());
+        }
 
         // caculate receips hash
-        let mut receips_tree = Tree::new();
-        receips_tree.build(receips_leafs.clone());
-        header.set_receips_hash(receips_tree.root());
+        if receips_leafs.len() > 0 {
+            let mut receips_tree = Tree::new();
+            receips_tree.build(receips_leafs.clone());
+            header.set_receips_hash(receips_tree.root());
+        }
 
         // caculate fee hash
 
@@ -324,14 +328,18 @@ impl BlockExecutor {
         }
 
         // caculate receips hash
-        let mut txs_tree = Tree::new();
-        txs_tree.build(txs_leafs.clone());
-        header.set_transactions_hash(txs_tree.root());
+        if txs_leafs.len() > 0 {
+            let mut txs_tree = Tree::new();
+            txs_tree.build(txs_leafs.clone());
+            header.set_transactions_hash(txs_tree.root());
+        }
 
         // caculate receips hash
-        let mut receips_tree = Tree::new();
-        receips_tree.build(receips_leafs.clone());
-        header.set_receips_hash(receips_tree.root());
+        if receips_leafs.len() > 0 {
+            let mut receips_tree = Tree::new();
+            receips_tree.build(receips_leafs.clone());
+            header.set_receips_hash(receips_tree.root());
+        }
 
         // caculate fee hash
 
