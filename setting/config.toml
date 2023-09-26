@@ -48,7 +48,7 @@ block_max_contract_size = 100
 commit_interval = 10
 
 
-[jsonrpc]
+[json_rpc]
 address = "0.0.0.0:8081"
 batch_size_limit = 20
 page_size_limit = 1000
