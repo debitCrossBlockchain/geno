@@ -6,11 +6,11 @@ pub const LEDGER_VERSION: u64 = 1000;
 pub const NETWORK_VERSION: u64 = 1000;
 
 pub const GENESIS_TIMESTAMP_USECS: i64 = 0;
-pub const GENESIS_HEIGHT: u64 = 0;
+pub const GENESIS_HEIGHT: u64 = 1;
 
 pub const BFT_PREVIOUS_PROOF: &str = "bft_previous_proof";
 pub const BFT_CURRENT_PROOF: &str = "bft_current_proof";
-pub const BFT_CONSENSUS_VALUE_HASH: &str = "bft_consensus_value hash";
+pub const BFT_CONSENSUS_VALUE_HASH: &str = "bft_consensus_value_hash";
 pub const BFT_TX_HASH_LIST: &str = "bft_tx_hash_list";
 
 pub const NODE_VOLIDATORE: u64 = 0;

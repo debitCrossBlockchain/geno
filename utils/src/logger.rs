@@ -33,6 +33,7 @@ impl LogUtil {
 
         let builder = tracing_subscriber::fmt()
             .with_timer(timer)
+            .with_line_number(true)
             .with_env_filter(EnvFilter::from_default_env())
             .with_filter_reloading();
         let handle = builder.reload_handle();

@@ -78,8 +78,8 @@ impl BftState {
         Self {
             is_validator: false,
             private_key,
-            chain_id: self_chain_hub(),
-            chain_hub: self_chain_id(),
+            chain_id: self_chain_id(),
+            chain_hub: self_chain_hub(),
             node_address: node_address(),
             replica_id: -1,
             validators: Validators::default(),

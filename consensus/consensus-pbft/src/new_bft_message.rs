@@ -342,23 +342,12 @@ impl NewBftMessage {
         let block = match ProtocolParser::deserialize::<Ledger>(data) {
             Ok(block) => block,
             Err(e) => {
-                error!("Ledger deserialize error:{}", e);
-                return format!("error consensus value");
+                error!("consensus value deserialize error:{}", e);
+                return format!("consensus value deserialize error");
             }
         };
 
-        let consensus_value_hash = match block
-            .get_header()
-            .get_extended_data()
-            .get_extra_data()
-            .get(utils::general::BFT_CONSENSUS_VALUE_HASH)
-        {
-            Some(data) => data.clone(),
-            None => {
-                error!("Ledger no consensus value hash.");
-                return format!("Ledger no consensus value hash");
-            }
-        };
+        let consensus_value_hash = hash_crypto_byte(data);
 
         format!(
             "value hash({}) | close time({}) | previous hash({}) | ledger sequence({})",

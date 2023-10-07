@@ -1,3 +1,4 @@
+use configure::CONFIGURE_INSTANCE_REF;
 use crossbeam_channel::{bounded, Receiver};
 use executor::LAST_COMMITTED_BLOCK_INFO_REF;
 use ledger_upgrade::ledger_upgrade::{LedgerUpgradeInstance, LedgerUpgradeService};
@@ -58,7 +59,10 @@ pub fn start_consensus(
         ledger_upgrade_instance.write().set_is_validator(true);
     }
 
-    process(consensus, timer_receiver, network_tx);
+    process(consensus.clone(), timer_receiver, network_consensus);
+    start_consensus_check_timer(consensus.clone());
+    start_consensus_publish_timer(consensus.clone());
+    start_ledgerclose_check_timer(consensus.clone());
 }
 
 fn process(
@@ -131,4 +135,17 @@ fn process(
             }
         }
     });
+}
+
+fn start_consensus_check_timer(consensus: Arc<RwLock<BftConsensus>>) {
+    consensus.write().start_consensus_check_timer();
+}
+
+fn start_consensus_publish_timer(consensus: Arc<RwLock<BftConsensus>>) {
+    consensus
+        .write()
+        .start_consensus_publish_timer(CONFIGURE_INSTANCE_REF.consensus.commit_interval);
+}
+fn start_ledgerclose_check_timer(consensus: Arc<RwLock<BftConsensus>>) {
+    consensus.write().start_ledgerclose_check_timer();
 }

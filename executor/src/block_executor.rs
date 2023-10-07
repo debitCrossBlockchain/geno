@@ -4,6 +4,7 @@ use crate::LAST_COMMITTED_BLOCK_INFO_REF;
 use anyhow::bail;
 use ledger_store::LedgerStorage;
 use merkletree::Tree;
+use msp::bytes_to_hex_str;
 use protos::{
     common::{TransactionResult, Validator, ValidatorSet},
     consensus::BftProof,
@@ -15,12 +16,14 @@ use state_store::StateStorage;
 use std::collections::HashMap;
 use storage_db::{MemWriteBatch, WriteBatchTrait, STORAGE_INSTANCE_REF};
 use syscontract::system_address::is_system_contract;
+use tracing::info;
 use types::error::BlockExecutionError;
 use types::transaction::SignedTransaction;
 use utils::{
     general::{genesis_block_config, hash_crypto_byte, hash_zero, self_chain_hub, self_chain_id},
     parse::ProtocolParser,
 };
+
 use vm::{EvmExecutor, PostState};
 pub struct BlockExecutor {}
 
@@ -78,10 +81,16 @@ impl BlockExecutor {
         state.commit();
         let tx_result_set = post_state.convert_to_geno_txresult(header.get_height());
 
+        let new_validator_set = {
+            LAST_COMMITTED_BLOCK_INFO_REF
+                .read()
+                .get_validators()
+                .clone()
+        };
         let result = BlockResult {
             state,
             tx_result_set,
-            validator_set: ValidatorSet::new(),
+            validator_set: new_validator_set,
         };
 
         Ok((tx_array, result))
@@ -133,11 +142,7 @@ impl BlockExecutor {
             &state_datas,
             &mut state_batch,
         )?;
-        let proof = if let Some(proof_data) = block
-            .get_extended_data()
-            .get_extra_data()
-            .get(utils::general::BFT_CURRENT_PROOF)
-        {
+        let proof = if let Some(proof_data) = Self::get_proof(block) {
             let proof = ProtocolParser::deserialize::<BftProof>(proof_data)?;
             StateStorage::store_last_proof(&mut state_batch, &proof);
             Some(proof)
@@ -189,9 +194,21 @@ impl BlockExecutor {
         ));
         header.set_validators_hash(validator_hash);
 
+        // set consensus value hash
+        let consensus_hash = Self::caculate_consensus_value_hash(block);
+        Self::set_consensus_value_hash(&mut header, consensus_hash.clone());
+
+        // set ledger hash
         header.set_hash(hash_crypto_byte(
             &ProtocolParser::serialize::<LedgerHeader>(&header),
         ));
+
+        info!(
+            "commit_block height({}) hash({}) consensus_value_hash({})",
+            header.get_height(),
+            bytes_to_hex_str(header.get_hash()),
+            bytes_to_hex_str(&consensus_hash),
+        );
 
         let mut ledger_batch = MemWriteBatch::new();
         LedgerStorage::store_ledger(&mut ledger_batch, &header, &txs_store);
@@ -230,16 +247,15 @@ impl BlockExecutor {
         state.commit();
 
         // set bolck header
-        let mut header = LedgerHeader::default();
-        header.set_height(utils::general::GENESIS_HEIGHT);
-        header.set_timestamp(utils::general::GENESIS_TIMESTAMP_USECS);
-        header.set_previous_hash(hash_zero());
-        header.set_chain_id(self_chain_id());
-        header.set_hub_id(self_chain_hub());
-        header.set_version(utils::general::LEDGER_VERSION);
-        header.set_tx_count(0);
-        header.set_total_tx_count(0);
-        header.set_proposer(genesis_block.genesis_account.clone());
+        let header = Self::initialize_new_header(
+            utils::general::GENESIS_HEIGHT,
+            hash_zero(),
+            utils::general::GENESIS_TIMESTAMP_USECS,
+            utils::general::LEDGER_VERSION,
+            0,
+            0,
+            genesis_block.genesis_account.clone(),
+        );
 
         let mut block = Ledger::default();
         block.set_header(header);
@@ -454,6 +470,28 @@ impl BlockExecutor {
         Ok(())
     }
 
+    pub fn initialize_new_header(
+        height: u64,
+        previous_hash: Vec<u8>,
+        timestamp: i64,
+        version: u64,
+        tx_count: u64,
+        total_tx_count: u64,
+        proposer: String,
+    ) -> LedgerHeader {
+        let mut header = LedgerHeader::default();
+        header.set_height(height);
+        header.set_timestamp(timestamp);
+        header.set_previous_hash(previous_hash);
+        header.set_version(version);
+        header.set_tx_count(tx_count);
+        header.set_total_tx_count(total_tx_count);
+        header.set_proposer(proposer);
+        header.set_chain_id(self_chain_id());
+        header.set_hub_id(self_chain_hub());
+        header
+    }
+
     pub fn initialize_new_block(
         height: u64,
         previous_hash: Vec<u8>,
@@ -466,57 +504,105 @@ impl BlockExecutor {
         tx_hash_list: Option<Vec<u8>>,
     ) -> Ledger {
         let mut ledger = Ledger::default();
-        let mut header = LedgerHeader::default();
-        header.set_height(height);
-        header.set_timestamp(timestamp);
-        header.set_previous_hash(previous_hash);
-        header.set_version(version);
-        header.set_tx_count(tx_count);
-        header.set_total_tx_count(total_tx_count);
-        header.set_proposer(proposer);
+
+        let header = Self::initialize_new_header(
+            height,
+            previous_hash,
+            timestamp,
+            version,
+            tx_count,
+            total_tx_count,
+            proposer,
+        );
 
         ledger.set_header(header);
         let mut extended_data = ExtendedData::default();
         if let Some(previous_proof) = previous_proof {
-            extended_data.mut_extra_data().insert(
-                utils::general::BFT_PREVIOUS_PROOF.to_string(),
-                previous_proof,
-            );
+            Self::set_previous_proof(&mut ledger, previous_proof);
         }
         if let Some(tx_hash_list) = tx_hash_list {
-            extended_data
-                .mut_extra_data()
-                .insert(utils::general::BFT_TX_HASH_LIST.to_string(), tx_hash_list);
-        }
-        if extended_data.extra_data.len() > 0 {
-            ledger.set_extended_data(extended_data);
+            Self::set_tx_hash_list(&mut ledger, tx_hash_list);
         }
 
         ledger
     }
 
-    pub fn clone_initially_block(block: &Ledger) -> Ledger {
+    pub fn get_consensus_value_hash(header: &LedgerHeader) -> Option<&Vec<u8>> {
+        header
+            .get_extended_data()
+            .get_extra_data()
+            .get(utils::general::BFT_CONSENSUS_VALUE_HASH)
+    }
+
+    pub fn get_previous_proof(block: &Ledger) -> Option<&Vec<u8>> {
+        block
+            .get_extended_data()
+            .get_extra_data()
+            .get(utils::general::BFT_PREVIOUS_PROOF)
+    }
+
+    pub fn get_tx_hash_list(block: &Ledger) -> Option<&Vec<u8>> {
+        block
+            .get_extended_data()
+            .get_extra_data()
+            .get(utils::general::BFT_TX_HASH_LIST)
+    }
+
+    pub fn get_proof(block: &Ledger) -> Option<&Vec<u8>> {
+        block
+            .get_extended_data()
+            .get_extra_data()
+            .get(utils::general::BFT_CURRENT_PROOF)
+    }
+
+    pub fn set_consensus_value_hash(header: &mut LedgerHeader, consensus_hash: Vec<u8>) {
+        // insert consensus value hash
+        header.mut_extended_data().mut_extra_data().insert(
+            utils::general::BFT_CONSENSUS_VALUE_HASH.to_string(),
+            consensus_hash,
+        );
+    }
+
+    pub fn set_current_proof(block: &mut Ledger, proof: Vec<u8>) {
+        block
+            .mut_extended_data()
+            .mut_extra_data()
+            .insert(utils::general::BFT_CURRENT_PROOF.to_string(), proof);
+    }
+
+    pub fn set_previous_proof(block: &mut Ledger, proof: Vec<u8>) {
+        block
+            .mut_extended_data()
+            .mut_extra_data()
+            .insert(utils::general::BFT_PREVIOUS_PROOF.to_string(), proof);
+    }
+
+    pub fn set_tx_hash_list(block: &mut Ledger, proof: Vec<u8>) {
+        block
+            .mut_extended_data()
+            .mut_extra_data()
+            .insert(utils::general::BFT_TX_HASH_LIST.to_string(), proof);
+    }
+
+    pub fn caculate_consensus_value_hash(block: &Ledger) -> Vec<u8> {
         let mut ledger = Ledger::default();
-        let mut header = LedgerHeader::default();
-        header.set_height(block.get_header().get_height());
-        header.set_timestamp(block.get_header().get_timestamp());
-        header.set_previous_hash(block.get_header().get_previous_hash().to_vec());
-        header.set_version(block.get_header().get_version());
-        header.set_tx_count(block.get_header().get_tx_count());
-        header.set_total_tx_count(block.get_header().get_total_tx_count());
-        header.set_proposer(block.get_header().get_proposer().to_string());
+        let header = Self::initialize_new_header(
+            block.get_header().get_height(),
+            block.get_header().get_previous_hash().to_vec(),
+            block.get_header().get_timestamp(),
+            block.get_header().get_version(),
+            block.get_header().get_tx_count(),
+            block.get_header().get_total_tx_count(),
+            block.get_header().get_proposer().to_string(),
+        );
 
         ledger.set_header(header);
-        let mut extended_data = ExtendedData::default();
         if let Some(previous_proof) = block
             .get_extended_data()
             .get_extra_data()
             .get(utils::general::BFT_PREVIOUS_PROOF)
         {
-            extended_data.mut_extra_data().insert(
-                utils::general::BFT_PREVIOUS_PROOF.to_string(),
-                previous_proof.clone(),
-            );
+            Self::set_previous_proof(&mut ledger, previous_proof.clone());
         }
 
         if let Some(tx_hash_list) = block
@@ -524,17 +610,12 @@ impl BlockExecutor {
             .get_extra_data()
             .get(utils::general::BFT_TX_HASH_LIST)
         {
-            extended_data.mut_extra_data().insert(
-                utils::general::BFT_TX_HASH_LIST.to_string(),
-                tx_hash_list.clone(),
-            );
+            Self::set_tx_hash_list(&mut ledger, tx_hash_list.clone());
         }
 
-        if extended_data.extra_data.len() > 0 {
-            ledger.set_extended_data(extended_data);
-        }
-
-        ledger
+        // caculate consensus value hash
+        let consensus_hash = hash_crypto_byte(&ProtocolParser::serialize::<Ledger>(&ledger));
+        consensus_hash
     }
 
     pub fn call_transaction(tx: &TransactionSign) -> std::result::Result<(), ()> {

@@ -5,6 +5,7 @@ use executor::{block_result::BlockResult, BlockExecutor, LAST_COMMITTED_BLOCK_IN
 use ledger_upgrade::ledger_upgrade::LedgerUpgradeInstance;
 use network::PeerNetwork;
 use parking_lot::RwLock;
+use protobuf::error;
 use protos::{
     common::{TransactionResult, ValidatorSet},
     consensus::{BftMessageType, BftProof, BftSign, LedgerUpgrade, NewViewRepondParam, TxHashList},
@@ -329,9 +330,11 @@ impl BftConsensus {
         let v = self.ckp_interval() / 2;
         for sequence in exe_vec {
             //Delete the old check point
-            self.logs
-                .instances
-                .retain(|key, value| (key.sequence > (sequence - v)));
+            if sequence >= v {
+                self.logs
+                    .instances
+                    .retain(|key, value| (key.sequence > (sequence - v)));
+            }
         }
         return true;
     }
@@ -348,12 +351,8 @@ impl BftConsensus {
         let t0 = chrono::Local::now().timestamp_millis();
 
         let lcl = { LAST_COMMITTED_BLOCK_INFO_REF.read().get_header().clone() };
-        let hash_list = match block
-            .get_extended_data()
-            .get_extra_data()
-            .get(utils::general::BFT_TX_HASH_LIST)
-        {
-            Some(hash_list) => match ProtocolParser::deserialize::<TxHashList>(value) {
+        let hash_list = match BlockExecutor::get_tx_hash_list(&block) {
+            Some(value) => match ProtocolParser::deserialize::<TxHashList>(value) {
                 Ok(hash_list) => hash_list,
                 Err(e) => {
                     error!(parent:self.span(),"handle_value_committed deserialize TxHashList error {}",e);
@@ -361,8 +360,8 @@ impl BftConsensus {
                 }
             },
             None => {
-                error!(parent:self.span(),"handle_value_committed no txs hash list");
-                return;
+                // error!(parent:self.span(),"handle_value_committed no txs hash list");
+                TxHashList::default()
             }
         };
 
@@ -383,12 +382,7 @@ impl BftConsensus {
         }
 
         // add current proof into block
-        let mut extended_data = ExtendedData::default();
-        extended_data.mut_extra_data().insert(
-            utils::general::BFT_CURRENT_PROOF.to_string(),
-            ProtocolParser::serialize::<BftProof>(&proof),
-        );
-        block.set_extended_data(extended_data);
+        BlockExecutor::set_current_proof(&mut block, ProtocolParser::serialize::<BftProof>(&proof));
 
         //ledger execute
         let t1 = chrono::Local::now().timestamp_millis();
@@ -548,9 +542,15 @@ impl BftConsensus {
         }
 
         if let Some(value) = last_value {
-            let initialy_value = BlockExecutor::clone_initially_block(value);
             let consensus_value_hash =
-                hash_crypto_byte(&ProtocolParser::serialize::<Ledger>(&initialy_value));
+                hash_crypto_byte(&ProtocolParser::serialize::<Ledger>(value));
+            // let consensus_value_hash = match consensus_value_hash {
+            //     Some(value) => value,
+            //     None => {
+            //         error!(parent:self.span(),"No consensus_value_hash in value");
+            //         return false;
+            //     }
+            // };
             info!(parent:self.span(),
                 "The last PREPARED message value is not empty. consensus value digest({})",
                 msp::bytes_to_hex_str(&consensus_value_hash)
@@ -588,12 +588,15 @@ impl BftConsensus {
             )
         };
 
-        let mut proto_hash_list = TxHashList::default();
-        proto_hash_list.mut_hash_set().clone_from_slice(&hash_list);
-
         let tx_count = hash_list.len() as u64;
         let total_tx_count = lcl.get_total_tx_count() + tx_count;
-        let tx_hash_list = Some(ProtocolParser::serialize::<TxHashList>(&proto_hash_list));
+        let tx_hash_list = if tx_count > 0 {
+            let mut proto_hash_list = TxHashList::default();
+            proto_hash_list.mut_hash_set().clone_from_slice(&hash_list);
+            Some(ProtocolParser::serialize::<TxHashList>(&proto_hash_list))
+        } else {
+            None
+        };
 
         let propose_value = BlockExecutor::initialize_new_block(
             lcl.get_height() + 1,
@@ -734,6 +737,7 @@ impl BftConsensus {
     pub fn handle_receive_consensus(&mut self, bft_sign: &BftSign) -> bool {
         let bft = bft_sign.get_bft();
         let sig = bft_sign.get_signature();
+        info!(parent:self.span(),"consensus receive msg {:?}",bft.get_msg_type());
         //Check the message item.
         if !self.state.check_bft_message(&bft_sign) {
             return false;

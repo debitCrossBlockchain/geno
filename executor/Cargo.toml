@@ -15,6 +15,7 @@ storage-db = { path = "../storage/storage-db", version = "0.1.0" }
 ledger-store = { path = "../storage/ledger-store", version = "0.1.0" }
 state-store = { path = "../storage/state-store", version = "0.1.0" }
 vm = { path = "../vm", version = "0.1.0" }
+msp = { path = "../msp", version = "0.1.0" }
 syscontract = { path = "../syscontract", version = "0.1.0" }
 types = { path = "../types", version = "0.1.0" }
 tracing = { version = "0.1", default-features = false }

@@ -1,5 +1,6 @@
 use crate::{new_bft_message::NewBftMessage, utils::quorum_size, validators::Validators};
-use executor::LAST_COMMITTED_BLOCK_INFO_REF;
+use executor::{BlockExecutor, LAST_COMMITTED_BLOCK_INFO_REF};
+use msp::bytes_to_hex_str;
 use protobuf::Message;
 use protos::{
     common::ValidatorSet,
@@ -8,7 +9,7 @@ use protos::{
 };
 use state_store::StateStorage;
 use std::collections::HashSet;
-use tracing::{error, trace, Span};
+use tracing::{error, Span};
 use utils::{
     general::{self_chain_hub, self_chain_id},
     parse::ProtocolParser,
@@ -125,50 +126,51 @@ impl CheckValue {
         }
 
         //Check the second block
-        let previous_proof = if let Some(data) = block
-            .get_extended_data()
-            .get_extra_data()
-            .get(utils::general::BFT_PREVIOUS_PROOF)
-        {
-            let proof = match ProtocolParser::deserialize::<BftProof>(data) {
-                Ok(pf) => {
-                    if lcl.get_height() == 1 && !pf.get_commits().is_empty() {
-                        error!(
-                            parent: span,
-                            "The second block's previous consensus proof must be empty."
-                        );
-                        return CheckValueResult::MayValid;
-                    }
-                    pf
-                }
-                Err(e) => {
-                    error!(parent: span, "{}", e);
-                    return CheckValueResult::InValid;
-                }
-            };
-            proof
-        } else {
-            error!(parent: span, "New ledger no previous consensus proof.",);
-            return CheckValueResult::InValid;
-        };
+        if lcl.get_height() == 1 {
+            if let Some(_) = BlockExecutor::get_previous_proof(block) {
+                error!(
+                    parent: span,
+                    "The second block's previous consensus proof must be empty."
+                );
+                return CheckValueResult::MayValid;
+            }
+        }
 
         //Check this proof
         if lcl.get_height() > 1 {
-            let consensus_value_hash = match block
-                .get_header()
-                .get_extended_data()
-                .get_extra_data()
-                .get(utils::general::BFT_CONSENSUS_VALUE_HASH)
-            {
+            let previous_proof = if let Some(data) = BlockExecutor::get_previous_proof(block) {
+                let proof = match ProtocolParser::deserialize::<BftProof>(data) {
+                    Ok(pf) => {
+                        if pf.get_commits().is_empty() {
+                            error!(
+                                parent: span,
+                                "The second block's previous consensus proof must be not empty."
+                            );
+                            return CheckValueResult::MayValid;
+                        }
+                        pf
+                    }
+                    Err(e) => {
+                        error!(parent: span, "{}", e);
+                        return CheckValueResult::MayValid;
+                    }
+                };
+                proof
+            } else {
+                error!(parent: span, "New ledger no previous consensus proof.",);
+                return CheckValueResult::MayValid;
+            };
+
+            let previous_consensus_value_hash = match BlockExecutor::get_consensus_value_hash(lcl) {
                 Some(data) => data.clone(),
                 None => {
                     error!(parent: span, "New ledger no consensus value hash.",);
-                    return CheckValueResult::InValid;
+                    return CheckValueResult::MayValid;
                 }
             };
             if !Self::check_proof(
                 &validators_set,
-                &consensus_value_hash,
+                &previous_consensus_value_hash,
                 &previous_proof,
                 span,
             )
@@ -186,8 +188,8 @@ impl CheckValue {
 
     pub fn check_proof(
         validators: &ValidatorSet,
-        previous_hash: &[u8],
-        proof: &BftProof,
+        previous_consensus_value_hash: &[u8],
+        previous_proof: &BftProof,
         span: &Span,
     ) -> bool {
         let mut temp_vs = Validators::default();
@@ -197,11 +199,11 @@ impl CheckValue {
         let q_size = quorum_size(total_size) + 1;
 
         //Check proof
-        for bft_sign in proof.commits.to_vec() {
+        for bft_sign in previous_proof.commits.to_vec() {
             let bft = bft_sign.get_bft();
             if !Self::check_message(&bft_sign, &temp_vs) {
-                error!(parent: span,"Failed to check proof message item: validators:({:?}), hash ({:?}), proof({:?}), total_size({}), qsize({}), counter({})",
-                       validators.get_validators(),String::from_utf8(previous_hash.to_vec()).unwrap(), bft_sign, total_size, q_size, temp_vs.len());
+                error!(parent: span,"Failed to check proof message item: validators:({:?}), hash ({}), proof({:?}), total_size({}), qsize({}), counter({})",
+                       validators.get_validators(),bytes_to_hex_str(previous_consensus_value_hash), NewBftMessage::bft_desc(bft), total_size, q_size, temp_vs.len());
                 return false;
             }
 
@@ -215,9 +217,9 @@ impl CheckValue {
             }
 
             let commit = bft.get_commit();
-            if commit.get_value_digest() != previous_hash {
-                error!(parent: span,"Failed to check proof message item, because message value hash {:?} is not equal to previous value hash {:?}",
-                       commit.get_value_digest(), previous_hash);
+            if commit.get_value_digest() != previous_consensus_value_hash {
+                error!(parent: span,"Failed to check proof message item, because message value hash {} is not equal to previous value hash {}",
+                bytes_to_hex_str(commit.get_value_digest()), bytes_to_hex_str(previous_consensus_value_hash));
                 return false;
             }
 
@@ -235,7 +237,7 @@ impl CheckValue {
             if !temp_vs.contains(&address) {
                 error!(
                     parent: span,
-                    "Failed to check proof, because signature({:?}) is not found or duplicated",
+                    "Failed to check proof, because signature({}) is not found or duplicated",
                     address
                 );
                 return false;
@@ -273,7 +275,7 @@ impl CheckValue {
         };
 
         if bft_sign.get_chain_id() != self_chain_id() {
-            trace!(
+            error!(
                 "Failed to check same chain, node self id {} is not eq {}",
                 bft_sign.get_chain_id(),
                 self_chain_id()
@@ -282,7 +284,7 @@ impl CheckValue {
         }
 
         if bft_sign.get_chain_hub() != self_chain_hub() {
-            trace!(
+            error!(
                 "Failed to check same chain hub, node self id {} is not eq {}",
                 bft_sign.get_chain_id(),
                 self_chain_hub()
@@ -312,7 +314,6 @@ impl CheckValue {
         }
 
         //Check the signature
-
         match verify_sign(sign, &ProtocolParser::serialize(bft)) {
             Ok(ret) => {
                 if !ret {

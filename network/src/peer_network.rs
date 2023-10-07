@@ -662,9 +662,9 @@ impl PeerNetwork {
 
     pub fn add_subscribers(
         &self,
-        topic: &[ProtocolsMessageType],
+        topics: &[ProtocolsMessageType],
     ) -> LocalBusSubscriber<ProtocolsMessageType, ReturnableProtocolsMessage> {
-        self.bus.add_subscriber(topic)
+        self.bus.add_subscriber(topics)
     }
 
     pub fn add_subscriber(
