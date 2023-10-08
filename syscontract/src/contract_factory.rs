@@ -47,7 +47,7 @@ impl SystemContractFactory {
     }
 
     pub fn invoke(
-        &mut self,
+        &self,
         name: String,
         payload: &[u8],
         state: CacheState,

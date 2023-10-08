@@ -1,6 +1,8 @@
 use crate::database::{State, VmState};
 use crate::post_state::{PostAccount, PostState, Receipt};
 use crate::utils::AddressConverter;
+use crate::sysvm;
+
 use bytes::Bytes;
 use protos::ledger::LedgerHeader;
 use revm::{
@@ -19,6 +21,7 @@ use types::{error::VmError, transaction::SignedTransaction};
 pub struct EvmExecutor {
     evm: EVM<VmState>,
     header: LedgerHeader,
+    state:CacheState,
 }
 
 impl EvmExecutor {
@@ -26,7 +29,7 @@ impl EvmExecutor {
         header: &LedgerHeader,
         cache_state: CacheState,
     ) -> std::result::Result<EvmExecutor, VmError> {
-        let vm_state = VmState::new(State::new(cache_state));
+        let vm_state = VmState::new(State::new(cache_state.clone()));
         let mut evm = EVM::new();
         evm.database(vm_state);
 
@@ -34,6 +37,7 @@ impl EvmExecutor {
         Ok(EvmExecutor {
             evm,
             header: header.clone(),
+            state: cache_state,
         })
     }
 
@@ -84,6 +88,33 @@ impl EvmExecutor {
         );
 
         Ok(())
+    }
+
+    pub fn evm_execute(
+        &mut self,
+        index: usize,
+        transaction: &SignedTransaction,
+        post_state: &mut PostState,
+    ) -> std::result::Result<(), VmError> {
+        self.execute(index, transaction, post_state)
+    }
+
+    pub fn wasm_execute(
+        &mut self,
+        index: usize,
+        transaction: &SignedTransaction,
+        post_state: &mut PostState,
+    ) -> std::result::Result<(), VmError> {
+        Ok(())
+    }
+
+    pub fn sysvm_execute(
+        &mut self,
+        index: usize,
+        transaction: &SignedTransaction,
+        post_state: &mut PostState,
+    ) -> std::result::Result<(), VmError> {
+        sysvm::execute(index, transaction, post_state, self.state.clone(), self.header.clone())
     }
 
     fn db(&mut self) -> &mut VmState {
