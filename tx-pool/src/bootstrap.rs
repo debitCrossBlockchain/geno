@@ -174,7 +174,7 @@ where
         .par_iter()
         .map(|t| {
             get_account_nonce_banace(t.sender()).map_err(|e| {
-                error!("txpool: get state error");
+                error!("txpool: get state error ({})", e);
                 e
             })
         })

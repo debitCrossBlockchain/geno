@@ -160,7 +160,7 @@ impl JsonRpcError {
         let code = RpcErrorCode::ValidationError;
         Self {
             code: code as i16,
-            message: format!("Validation error:{:?}", error),
+            message: format!("Validation error: {:?}", error),
             data: Some(error as i16),
         }
     }

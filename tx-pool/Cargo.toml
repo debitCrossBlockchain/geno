@@ -20,10 +20,9 @@ futures = "0.3.21"
 types = { path = "../types", version = "0.1.0" }
 state = { path = "../state", version = "0.1.0" }
 utils = { path = "../utils", version = "0.1.0" }
+executor = { path = "../executor", version = "0.1.0" }
 network = { path = "../network", version = "0.1.0" }
 configure = { path = "../configure", version = "0.1.0" }
-prometheus = { version = "0.12.0", default-features = false }
-proptest = { version = "1.0.0", optional = true }
 rayon = "1.4.1"
 serde = { version = "1.0.124", default-features = false }
 tokio = { version = "1.17.0", features = ["full"] }

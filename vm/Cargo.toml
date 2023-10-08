@@ -7,7 +7,6 @@ edition = "2021"
 [dependencies]
 revm = { version = "3.3.0" }
 state = { path = "../state", version = "0.1.0" }
-tx-pool = { path = "../tx-pool", version = "0.1.0" }
 utils = { path = "../utils", version = "0.1.0" }
 types = { path = "../types", version = "0.1.0" }
 storage-db = { path = "../storage/storage-db", version = "0.1.0" }
@@ -24,5 +23,3 @@ primitive-types = { version = "0.12", default-features = false }
 
 hex = { version = "0.4", default-features = false }
 bytes = "1.4.0"
-
-syscontract = {path = "../syscontract", version = "0.1.0"}

@@ -592,7 +592,7 @@ impl BftConsensus {
         let total_tx_count = lcl.get_total_tx_count() + tx_count;
         let tx_hash_list = if tx_count > 0 {
             let mut proto_hash_list = TxHashList::default();
-            proto_hash_list.mut_hash_set().clone_from_slice(&hash_list);
+            proto_hash_list.set_hash_set(protobuf::RepeatedField::from(hash_list));
             Some(ProtocolParser::serialize::<TxHashList>(&proto_hash_list))
         } else {
             None

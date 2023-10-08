@@ -1,7 +1,9 @@
 use crate::pool::Pool;
 use anyhow::Result;
+use executor::LAST_COMMITTED_BLOCK_INFO_REF;
 use futures::channel::{mpsc, oneshot};
 use parking_lot::RwLock;
+use state::READING_TRIE_REF;
 use std::{
     collections::{HashMap, HashSet},
     convert::TryFrom,
@@ -288,5 +290,30 @@ pub type BroadCastTxSender = mpsc::UnboundedSender<Vec<SignedTransaction>>;
 pub type BroadcastTxReceiver = mpsc::UnboundedReceiver<Vec<SignedTransaction>>;
 
 pub fn get_account_nonce_banace(_account_address: &str) -> Result<(u64, u128)> {
-    Err(anyhow::anyhow!("get_account_nonce_banace failed"))
+    let state_hash = { LAST_COMMITTED_BLOCK_INFO_REF.read().get_state_hash() };
+    let change = { READING_TRIE_REF.read().is_change(&state_hash) };
+    let result = if change {
+        READING_TRIE_REF
+            .write()
+            .get_mut(&state_hash, _account_address)
+    } else {
+        READING_TRIE_REF.read().get(_account_address)
+    };
+    match result {
+        Ok(value) => match value {
+            Some(account) => {
+                return Ok((account.nonce(), account.balance()));
+            }
+            None => {
+                return Err(anyhow::anyhow!(
+                    "account you are looking for does not exist"
+                ));
+            }
+        },
+        Err(e) => {
+            return Err(anyhow::anyhow!(
+                "account you are looking for does not exist,trie error"
+            ))
+        }
+    }
 }
