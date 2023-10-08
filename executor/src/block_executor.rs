@@ -62,12 +62,6 @@ impl BlockExecutor {
                 }
             };
             if is_system_contract(&tx_raw.sender().to_string()) {
-                if let Err(e) = vm.sysvm_execute(index, &tx_raw, &mut post_state){
-                    let error = BlockExecutionError::VmError {
-                        error: format!("sysvm execute error {e:?}"),
-                    };
-                    continue;
-                }
             } else {
                 if let Err(e) = vm.execute(index, &tx_raw, &mut post_state) {
                     let error = BlockExecutionError::VmError {
@@ -210,9 +204,18 @@ impl BlockExecutor {
         ));
 
         info!(
-            "commit_block height({}) hash({}) consensus_value_hash({})",
+            "commit block height({}) hash({}) previous_hash({}) state_hash({}) transactions_hash({}) receips_hash({}) timestamp({}) version({}) tx_count({}) total_tx_count({}) validators_hash({}) consensus_value_hash({})",
             header.get_height(),
             bytes_to_hex_str(header.get_hash()),
+            bytes_to_hex_str(header.get_previous_hash()),
+            bytes_to_hex_str(header.get_state_hash()),
+            bytes_to_hex_str(header.get_transactions_hash()),
+            bytes_to_hex_str(header.get_receips_hash()),
+            header.get_timestamp(),
+            header.get_version(),
+            header.get_tx_count(),
+            header.get_total_tx_count(),
+            bytes_to_hex_str(header.get_validators_hash()),
             bytes_to_hex_str(&consensus_hash),
         );
 

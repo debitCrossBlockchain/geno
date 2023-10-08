@@ -67,13 +67,16 @@ impl TrieWriter {
         batch: &mut MemWriteBatch,
     ) -> anyhow::Result<TrieHash> {
         let mut trie_db = TrieHashDB::new(db, None);
-        let mut root = match root_hash {
-            Some(value) => value,
-            None => TrieHash::default(),
+        let (mut root, exist) = match root_hash {
+            Some(value) => (value, true),
+            None => (TrieHash::default(), false),
         };
         let new_root = {
-            let mut trie: trie_db::TrieDBMut<'_, ExtensionLayout> =
-                TrieDBMutBuilder::<ExtensionLayout>::new(&mut trie_db, &mut root).build();
+            let mut trie: trie_db::TrieDBMut<'_, ExtensionLayout> = if exist {
+                TrieDBMutBuilder::<ExtensionLayout>::from_existing(&mut trie_db, &mut root).build()
+            } else {
+                TrieDBMutBuilder::<ExtensionLayout>::new(&mut trie_db, &mut root).build()
+            };
 
             for (k, v) in datas.iter() {
                 match v {
