@@ -3,6 +3,7 @@ use configure::CONFIGURE_INSTANCE_REF;
 use consensus_store::bft_storage::BftStorage;
 use executor::{block_result::BlockResult, BlockExecutor, LAST_COMMITTED_BLOCK_INFO_REF};
 use ledger_upgrade::ledger_upgrade::LedgerUpgradeInstance;
+use msp::bytes_to_hex_str;
 use network::PeerNetwork;
 use parking_lot::RwLock;
 use protobuf::error;
@@ -351,18 +352,15 @@ impl BftConsensus {
         let t0 = chrono::Local::now().timestamp_millis();
 
         let lcl = { LAST_COMMITTED_BLOCK_INFO_REF.read().get_header().clone() };
-        let hash_list = match BlockExecutor::get_tx_hash_list(&block) {
-            Some(value) => match ProtocolParser::deserialize::<TxHashList>(value) {
+        let hash_list = match BlockExecutor::extract_tx_hash_list(&block) {
+            Some(value) => match ProtocolParser::deserialize::<TxHashList>(&value) {
                 Ok(hash_list) => hash_list,
                 Err(e) => {
                     error!(parent:self.span(),"handle_value_committed deserialize TxHashList error {}",e);
                     return;
                 }
             },
-            None => {
-                // error!(parent:self.span(),"handle_value_committed no txs hash list");
-                TxHashList::default()
-            }
+            None => TxHashList::default(),
         };
 
         // get tx from tx-pool
@@ -372,7 +370,7 @@ impl BftConsensus {
                 .get_block_by_hashs(hash_list.get_hash_set());
             if lacktx_hash_set.len() > 0 {
                 for (hash, index) in lacktx_hash_set.iter() {
-                    error!(parent:self.span(),"lacktx hash({}) index({}) in block({})",msp::bytes_to_hex_str(hash),index,block.get_header().get_height());
+                    error!(parent:self.span(),"lacktx hash({}) index({}) in block({})",bytes_to_hex_str(hash),index,block.get_header().get_height());
                 }
                 return;
             } else {
@@ -382,7 +380,10 @@ impl BftConsensus {
         }
 
         // add current proof into block
-        BlockExecutor::set_current_proof(&mut block, ProtocolParser::serialize::<BftProof>(&proof));
+        BlockExecutor::inject_current_proof(
+            &mut block,
+            ProtocolParser::serialize::<BftProof>(&proof),
+        );
 
         //ledger execute
         let t1 = chrono::Local::now().timestamp_millis();
@@ -553,12 +554,12 @@ impl BftConsensus {
             // };
             info!(parent:self.span(),
                 "The last PREPARED message value is not empty. consensus value digest({})",
-                msp::bytes_to_hex_str(&consensus_value_hash)
+                bytes_to_hex_str(&consensus_value_hash)
             );
             if CheckValue::check_value(value, self.span()) == CheckValueResult::Valid {
                 info!(parent:self.span(),"Take the last consensus value as the proposal. The number of transactions in consensus value is {}, and the last closed consensus value's hash is {}.", 
                 value.get_transaction_signs().len(),
-                msp::bytes_to_hex_str(lcl.get_hash()));
+                bytes_to_hex_str(lcl.get_hash()));
                 return self.proposal(value);
             }
         }
@@ -658,10 +659,11 @@ impl BftConsensus {
         self.logs.instances.insert(index, instance);
 
         info!(parent:self.span(),
-            "Send pre-prepare message: view number({}), sequence({}), consensus value({})",
+            "Send pre-prepare message: view number({}), sequence({}), consensus value({}) value_digest({})",
             self.view_number(),
             next_sequence,
-            NewBftMessage::consensus_value_desc(&ProtocolParser::serialize::<Ledger>(value))
+            NewBftMessage::consensus_value_desc(&ProtocolParser::serialize::<Ledger>(value)),
+            bytes_to_hex_str(bft_sign.get_bft().get_pre_prepare().get_value_digest())
         );
 
         //Broadcast the message to other nodes

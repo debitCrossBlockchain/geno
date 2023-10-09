@@ -28,7 +28,7 @@ message Ledger{
 }
 
 message ExtendedData {
-  map<string, bytes> extra_data = 1;
+  repeated KeyValuePair extra_data = 1;
 }
 
 enum TransactionType{

@@ -127,7 +127,7 @@ impl CheckValue {
 
         //Check the second block
         if lcl.get_height() == 1 {
-            if let Some(_) = BlockExecutor::get_previous_proof(block) {
+            if let Some(_) = BlockExecutor::extract_previous_proof(block) {
                 error!(
                     parent: span,
                     "The second block's previous consensus proof must be empty."
@@ -138,8 +138,8 @@ impl CheckValue {
 
         //Check this proof
         if lcl.get_height() > 1 {
-            let previous_proof = if let Some(data) = BlockExecutor::get_previous_proof(block) {
-                let proof = match ProtocolParser::deserialize::<BftProof>(data) {
+            let previous_proof = if let Some(data) = BlockExecutor::extract_previous_proof(block) {
+                let proof = match ProtocolParser::deserialize::<BftProof>(&data) {
                     Ok(pf) => {
                         if pf.get_commits().is_empty() {
                             error!(
@@ -161,13 +161,14 @@ impl CheckValue {
                 return CheckValueResult::MayValid;
             };
 
-            let previous_consensus_value_hash = match BlockExecutor::get_consensus_value_hash(lcl) {
-                Some(data) => data.clone(),
-                None => {
-                    error!(parent: span, "New ledger no consensus value hash.",);
-                    return CheckValueResult::MayValid;
-                }
-            };
+            let previous_consensus_value_hash =
+                match BlockExecutor::extract_consensus_value_hash(lcl) {
+                    Some(data) => data.clone(),
+                    None => {
+                        error!(parent: span, "New ledger no consensus value hash.",);
+                        return CheckValueResult::MayValid;
+                    }
+                };
             if !Self::check_proof(
                 &validators_set,
                 &previous_consensus_value_hash,

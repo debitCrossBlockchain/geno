@@ -6,7 +6,7 @@ use ledger_store::LedgerStorage;
 use merkletree::Tree;
 use msp::bytes_to_hex_str;
 use protos::{
-    common::{TransactionResult, Validator, ValidatorSet},
+    common::{KeyValuePair, TransactionResult, Validator, ValidatorSet},
     consensus::BftProof,
     ledger::*,
 };
@@ -62,13 +62,12 @@ impl BlockExecutor {
                 }
             };
             if is_system_contract(&tx_raw.sender().to_string()) {
-                if let Err(e) = vm.sysvm_execute(index, &tx_raw, &mut post_state){
+                if let Err(e) = vm.sysvm_execute(index, &tx_raw, &mut post_state) {
                     let error = BlockExecutionError::VmError {
                         error: format!("sysvm execute error {e:?}"),
                     };
                     continue;
                 }
-                    
             } else {
                 if let Err(e) = vm.execute(index, &tx_raw, &mut post_state) {
                     let error = BlockExecutionError::VmError {
@@ -149,8 +148,8 @@ impl BlockExecutor {
             &state_datas,
             &mut state_batch,
         )?;
-        let proof = if let Some(proof_data) = Self::get_proof(block) {
-            let proof = ProtocolParser::deserialize::<BftProof>(proof_data)?;
+        let proof = if let Some(proof_data) = Self::extract_proof(block) {
+            let proof = ProtocolParser::deserialize::<BftProof>(&proof_data)?;
             StateStorage::store_last_proof(&mut state_batch, &proof);
             Some(proof)
         } else {
@@ -203,7 +202,7 @@ impl BlockExecutor {
 
         // set consensus value hash
         let consensus_hash = Self::caculate_consensus_value_hash(block);
-        Self::set_consensus_value_hash(&mut header, consensus_hash.clone());
+        Self::inject_consensus_value_hash(&mut header, consensus_hash.clone());
 
         // set ledger hash
         header.set_hash(hash_crypto_byte(
@@ -532,72 +531,82 @@ impl BlockExecutor {
         );
 
         ledger.set_header(header);
-        let mut extended_data = ExtendedData::default();
         if let Some(previous_proof) = previous_proof {
-            Self::set_previous_proof(&mut ledger, previous_proof);
+            Self::inject_previous_proof(&mut ledger, previous_proof);
         }
         if let Some(tx_hash_list) = tx_hash_list {
-            Self::set_tx_hash_list(&mut ledger, tx_hash_list);
+            Self::inject_tx_hash_list(&mut ledger, tx_hash_list);
         }
 
         ledger
     }
 
-    pub fn get_consensus_value_hash(header: &LedgerHeader) -> Option<&Vec<u8>> {
-        header
-            .get_extended_data()
-            .get_extra_data()
-            .get(utils::general::BFT_CONSENSUS_VALUE_HASH)
+    pub fn extract_consensus_value_hash(header: &LedgerHeader) -> Option<Vec<u8>> {
+        for kv in header.get_extended_data().get_extra_data().iter() {
+            if kv.get_key() == utils::general::BFT_CONSENSUS_VALUE_HASH {
+                return Some(kv.get_value().to_vec());
+            }
+        }
+        None
     }
 
-    pub fn get_previous_proof(block: &Ledger) -> Option<&Vec<u8>> {
-        block
-            .get_extended_data()
-            .get_extra_data()
-            .get(utils::general::BFT_PREVIOUS_PROOF)
+    pub fn extract_previous_proof(block: &Ledger) -> Option<Vec<u8>> {
+        for kv in block.get_extended_data().get_extra_data().iter() {
+            if kv.get_key() == utils::general::BFT_PREVIOUS_PROOF {
+                return Some(kv.get_value().to_vec());
+            }
+        }
+        None
     }
 
-    pub fn get_tx_hash_list(block: &Ledger) -> Option<&Vec<u8>> {
-        block
-            .get_extended_data()
-            .get_extra_data()
-            .get(utils::general::BFT_TX_HASH_LIST)
+    pub fn extract_tx_hash_list(block: &Ledger) -> Option<Vec<u8>> {
+        for kv in block.get_extended_data().get_extra_data().iter() {
+            if kv.get_key() == utils::general::BFT_TX_HASH_LIST {
+                return Some(kv.get_value().to_vec());
+            }
+        }
+        None
     }
 
-    pub fn get_proof(block: &Ledger) -> Option<&Vec<u8>> {
-        block
-            .get_extended_data()
-            .get_extra_data()
-            .get(utils::general::BFT_CURRENT_PROOF)
+    pub fn extract_proof(block: &Ledger) -> Option<Vec<u8>> {
+        for kv in block.get_extended_data().get_extra_data().iter() {
+            if kv.get_key() == utils::general::BFT_CURRENT_PROOF {
+                return Some(kv.get_value().to_vec());
+            }
+        }
+        None
     }
 
-    pub fn set_consensus_value_hash(header: &mut LedgerHeader, consensus_hash: Vec<u8>) {
-        // insert consensus value hash
-        header.mut_extended_data().mut_extra_data().insert(
-            utils::general::BFT_CONSENSUS_VALUE_HASH.to_string(),
-            consensus_hash,
-        );
+    pub fn inject_consensus_value_hash(header: &mut LedgerHeader, consensus_hash: Vec<u8>) {
+        let mut kv = KeyValuePair::default();
+        kv.set_key(utils::general::BFT_CONSENSUS_VALUE_HASH.to_string());
+        kv.set_value(consensus_hash);
+
+        header.mut_extended_data().mut_extra_data().push(kv);
     }
 
-    pub fn set_current_proof(block: &mut Ledger, proof: Vec<u8>) {
-        block
-            .mut_extended_data()
-            .mut_extra_data()
-            .insert(utils::general::BFT_CURRENT_PROOF.to_string(), proof);
+    pub fn inject_current_proof(block: &mut Ledger, proof: Vec<u8>) {
+        let mut kv = KeyValuePair::default();
+        kv.set_key(utils::general::BFT_CURRENT_PROOF.to_string());
+        kv.set_value(proof);
+
+        block.mut_extended_data().mut_extra_data().push(kv);
     }
 
-    pub fn set_previous_proof(block: &mut Ledger, proof: Vec<u8>) {
-        block
-            .mut_extended_data()
-            .mut_extra_data()
-            .insert(utils::general::BFT_PREVIOUS_PROOF.to_string(), proof);
+    pub fn inject_previous_proof(block: &mut Ledger, proof: Vec<u8>) {
+        let mut kv = KeyValuePair::default();
+        kv.set_key(utils::general::BFT_PREVIOUS_PROOF.to_string());
+        kv.set_value(proof);
+
+        block.mut_extended_data().mut_extra_data().push(kv);
     }
 
-    pub fn set_tx_hash_list(block: &mut Ledger, proof: Vec<u8>) {
-        block
-            .mut_extended_data()
-            .mut_extra_data()
-            .insert(utils::general::BFT_TX_HASH_LIST.to_string(), proof);
+    pub fn inject_tx_hash_list(block: &mut Ledger, value: Vec<u8>) {
+        let mut kv = KeyValuePair::default();
+        kv.set_key(utils::general::BFT_TX_HASH_LIST.to_string());
+        kv.set_value(value);
+
+        block.mut_extended_data().mut_extra_data().push(kv);
     }
 
     pub fn caculate_consensus_value_hash(block: &Ledger) -> Vec<u8> {
@@ -613,20 +622,12 @@ impl BlockExecutor {
         );
 
         ledger.set_header(header);
-        if let Some(previous_proof) = block
-            .get_extended_data()
-            .get_extra_data()
-            .get(utils::general::BFT_PREVIOUS_PROOF)
-        {
-            Self::set_previous_proof(&mut ledger, previous_proof.clone());
+        if let Some(previous_proof) = Self::extract_previous_proof(block) {
+            Self::inject_previous_proof(&mut ledger, previous_proof.clone());
         }
 
-        if let Some(tx_hash_list) = block
-            .get_extended_data()
-            .get_extra_data()
-            .get(utils::general::BFT_TX_HASH_LIST)
-        {
-            Self::set_tx_hash_list(&mut ledger, tx_hash_list.clone());
+        if let Some(tx_hash_list) = Self::extract_tx_hash_list(block) {
+            Self::inject_tx_hash_list(&mut ledger, tx_hash_list.clone());
         }
 
         // caculate consensus value hash
