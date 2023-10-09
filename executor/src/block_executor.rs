@@ -62,6 +62,13 @@ impl BlockExecutor {
                 }
             };
             if is_system_contract(&tx_raw.sender().to_string()) {
+                if let Err(e) = vm.sysvm_execute(index, &tx_raw, &mut post_state){
+                    let error = BlockExecutionError::VmError {
+                        error: format!("sysvm execute error {e:?}"),
+                    };
+                    continue;
+                }
+                    
             } else {
                 if let Err(e) = vm.execute(index, &tx_raw, &mut post_state) {
                     let error = BlockExecutionError::VmError {
