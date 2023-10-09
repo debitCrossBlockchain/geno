@@ -1,11 +1,14 @@
-mod database;
-mod post_state;
+//mod database;
+//mod post_state;
 mod utils;
 mod vm;
 mod wasm;
 mod sysvm;
+mod evm;
 mod traits;
 
 
-pub use post_state::PostState;
+pub use evm::post_state::PostState;
 pub use vm::EvmExecutor;
+pub use evm::post_state;
+pub use evm::database;
