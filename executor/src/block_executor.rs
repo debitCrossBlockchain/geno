@@ -34,8 +34,15 @@ impl BlockExecutor {
         let header = block.get_header();
 
         // initialize state by last block state root
-        let root_hash = TrieHash::default();
-        let state = CacheState::new(root_hash);
+
+        let last_state_root_hash = if header.get_height() == utils::general::GENESIS_HEIGHT {
+            TrieHash::default()
+        } else {
+            LAST_COMMITTED_BLOCK_INFO_REF.read().get_state_hash()
+        };
+
+        //let root_hash = TrieHash::default();
+        let state = CacheState::new(last_state_root_hash);
 
         // initialize contract vm
         let mut vm = match EvmExecutor::new(header, state.clone()) {
