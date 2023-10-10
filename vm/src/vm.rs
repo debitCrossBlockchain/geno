@@ -10,11 +10,12 @@ use revm::{
     primitives::{
         hash_map::{self, Entry},
         Account as RevmAccount, AccountInfo, BlockEnv, ExecutionResult, Output, ResultAndState,
-        TransactTo, TxEnv, B160, KECCAK_EMPTY, U256,
+        TransactTo, TxEnv, B160, KECCAK_EMPTY, U256, CfgEnv, AnalysisKind, B256
     },
     EVM,
 };
 use state::CacheState;
+use tracing::error;
 use std::collections::BTreeMap;
 use types::{error::VmError, transaction::SignedTransaction};
 
@@ -34,6 +35,7 @@ impl EvmExecutor {
         evm.database(vm_state);
 
         Self::fill_block_env(&mut evm.env.block, header)?;
+        Self::fill_cfg_env(&mut evm.env.cfg, header)?;
         Ok(EvmExecutor {
             evm,
             header: header.clone(),
@@ -318,10 +320,33 @@ impl EvmExecutor {
         block_env.coinbase = AddressConverter::to_evm_address(header.get_proposer())?;
         block_env.timestamp = U256::from(header.get_timestamp());
 
-        block_env.prevrandao = None;
+        block_env.prevrandao = Some(B256::from(U256::from(1)));
         block_env.difficulty = U256::ZERO;
         block_env.basefee = U256::ZERO;
         block_env.gas_limit = U256::MAX;
+        Ok(())
+    }
+
+    fn fill_cfg_env(
+        cfg_env: &mut CfgEnv,
+        header: &LedgerHeader,
+    ) -> std::result::Result<(), VmError> {
+        let chain_id = match u64::from_str_radix(header.get_chain_id(), 10) {
+            Ok(value) => value,
+            Err(e) => {
+                return Err(VmError::ValueConvertError {
+                    error: format!(
+                        "chain id {} convert error {}",
+                        header.get_chain_id(),
+                        e.to_string()
+                    ),
+                });
+            }
+        };
+        cfg_env.chain_id = U256::from(chain_id);
+        cfg_env.spec_id = revm::primitives::MERGE;
+        cfg_env.perf_all_precompiles_have_balance = false;
+        cfg_env.perf_analyse_created_bytecodes = AnalysisKind::Analyse;
         Ok(())
     }
 

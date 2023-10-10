@@ -16,7 +16,7 @@ use state_store::StateStorage;
 use std::collections::HashMap;
 use storage_db::{MemWriteBatch, WriteBatchTrait, STORAGE_INSTANCE_REF};
 use syscontract::system_address::is_system_contract;
-use tracing::info;
+use tracing::{info, error};
 use types::error::BlockExecutionError;
 use types::transaction::SignedTransaction;
 use utils::{
@@ -73,6 +73,7 @@ impl BlockExecutor {
                     let error = BlockExecutionError::VmError {
                         error: format!("vm execute error {e:?}"),
                     };
+                    error!("vm execute error {e:?}");
                     continue;
                 }
             }
