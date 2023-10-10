@@ -210,8 +210,10 @@ impl Store {
                         .entry(sender.clone())
                         .or_insert(*account_sequence);
                     let last_seq = tracing_seqs.get(sender).unwrap();
-                    if tx_seq != *last_seq + 1 {
-                        break;
+                    if tx_seq != 0{
+                        if tx_seq != *last_seq + 1 {
+                            break;
+                        }
                     }
                     tracing_seqs.insert(sender.clone(), tx_seq);
                     priority_index.insert(tx);

@@ -185,7 +185,7 @@ where
         .enumerate()
         .filter_map(|(idx, tx)| {
             if let Ok((seq, banace)) = nonce_and_banace_vec[idx] {
-                if tx.nonce() > seq {
+                if tx.nonce() >= seq {
                     //check balance for limit fee
                     if tx.gas_limit() as u128 * tx.gas_price() > banace {
                         statuses.push((

@@ -9,6 +9,7 @@ use crate::{
 use network::PeerNetwork;
 use protobuf::{Message, RepeatedField};
 use protos::common::{ProtocolsMessage, ProtocolsMessageType};
+use tracing::{info, error};
 use std::{cmp::max, collections::HashMap, time::Duration};
 use utils::TransactionSign;
 
@@ -86,7 +87,7 @@ impl Pool {
         self.seq_cache.insert(txn.sender().to_string(), seq);
 
         // don't accept old transactions (e.g. seq is less than account's current seq_number)
-        if txn.nonce() <= seq {
+        if txn.nonce() < seq {
             return TxPoolStatus::new(TxPoolStatusCode::InvalidSeqNumber).with_message(format!(
                 "transaction sequence number is {}, account sequence number is  {}",
                 txn.nonce(),
