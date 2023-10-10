@@ -24,16 +24,18 @@ impl SignedTransaction {
     pub fn convert_into(&self) -> TransactionSign {
         let mut tx_sig = TransactionSign::new();
         let mut tx = Transaction::new();
-        tx.set_chain_id(self.chain_id().to_string());
-        tx.set_gas_limit(self.gas_limit());
-        tx.set_hub_id(self.hub_id().to_string());
-        tx.set_nonce(self.nonce());
-        tx.set_payload(self.payload.clone());
-        tx.set_reserves(self.reserves.clone());
-        tx.set_source(self.sender().to_string());
-        tx.set_to(self.to().to_string());
         tx.set_tx_type(self.tx_type());
+        tx.set_source(self.sender().to_string());
+        tx.set_nonce(self.nonce());
+        tx.set_to(self.to().to_string());
         tx.set_value(self.value().to_string());
+        tx.set_payload(self.payload.clone());
+        tx.set_gas_limit(self.gas_limit());
+        tx.set_gas_price(self.gas_price().to_string());
+        tx.set_chain_id(self.chain_id().to_string());
+        tx.set_hub_id(self.hub_id().to_string());
+        tx.set_reserves(self.reserves.clone());
+
         tx_sig.set_transaction(tx);
         tx_sig.set_signatures(RepeatedField::from(self.signatures.clone()));
         tx_sig.set_source_type(self.source_type);
