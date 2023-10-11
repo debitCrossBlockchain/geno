@@ -6,7 +6,8 @@ use std::{
     collections::LinkedList,
     sync::{Arc, Mutex},
 };
-use utils::general::{hash_bytes_to_string, hash_crypto};
+use msp::bytes_to_hex_str;
+use utils::general::{hash_bytes_to_string, hash_crypto_byte};
 
 pub struct Node {
     parent: Vec<u8>,
@@ -126,7 +127,7 @@ impl Tree {
             for node in vec_in_nodes {
                 println!(
                     "node hsah is:{:?}",
-                    hash_bytes_to_string(node.get_hash().as_slice())
+                    bytes_to_hex_str(node.get_hash().as_slice())
                 );
             }
         }
@@ -250,12 +251,10 @@ impl Tree {
     }
 
     pub fn hash_merkle_branches(left: Vec<u8>, right: Vec<u8>) -> Vec<u8> {
-        let hash_str = format!(
-            "{}{}",
-            hash_bytes_to_string(left.as_slice()),
-            hash_bytes_to_string(right.as_slice())
-        );
-        hash_crypto(hash_str.as_bytes().to_vec().as_slice())
+        let mut hash_vec:Vec<u8> = Vec::from(left);
+        hash_vec.extend(right.iter().copied());
+        hash_crypto_byte(hash_vec.as_slice())
+       
     }
 
     pub fn build_audit_trail(
@@ -330,22 +329,22 @@ impl Tree {
 fn test_double_tree() {
     let mut tree = Tree::new();
     let base_leafs = vec![
-        hash_crypto(&[0]),
-        hash_crypto(&[1]),
-        hash_crypto(&[2]),
-        hash_crypto(&[3]),
-        hash_crypto(&[4]),
-        hash_crypto(&[5]),
-        hash_crypto(&[6]),
-        hash_crypto(&[7]),
-        hash_crypto(&[8]),
-        hash_crypto(&[9]),
-        hash_crypto(&[10]),
-        hash_crypto(&[11]),
-        hash_crypto(&[12]),
-        hash_crypto(&[13]),
-        hash_crypto(&[14]),
-        hash_crypto(&[15]),
+        hash_crypto_byte(&[0]),
+        hash_crypto_byte(&[1]),
+        hash_crypto_byte(&[2]),
+        hash_crypto_byte(&[3]),
+        hash_crypto_byte(&[4]),
+        hash_crypto_byte(&[5]),
+        hash_crypto_byte(&[6]),
+        hash_crypto_byte(&[7]),
+        hash_crypto_byte(&[8]),
+        hash_crypto_byte(&[9]),
+        hash_crypto_byte(&[10]),
+        hash_crypto_byte(&[11]),
+        hash_crypto_byte(&[12]),
+        hash_crypto_byte(&[13]),
+        hash_crypto_byte(&[14]),
+        hash_crypto_byte(&[15]),
     ];
     tree.build_base_leafs(base_leafs.clone());
     tree.build_tree();
@@ -360,21 +359,21 @@ fn test_double_tree() {
 fn test_single_tree() {
     let mut tree = Tree::new();
     let base_leafs = vec![
-        hash_crypto(&[1]),
-        hash_crypto(&[2]),
-        hash_crypto(&[3]),
-        hash_crypto(&[4]),
-        hash_crypto(&[5]),
-        hash_crypto(&[6]),
-        hash_crypto(&[7]),
-        hash_crypto(&[8]),
-        hash_crypto(&[9]),
-        hash_crypto(&[10]),
-        hash_crypto(&[11]),
-        hash_crypto(&[12]),
-        hash_crypto(&[13]),
-        hash_crypto(&[14]),
-        hash_crypto(&[15]),
+        hash_crypto_byte(&[1]),
+        hash_crypto_byte(&[2]),
+        hash_crypto_byte(&[3]),
+        hash_crypto_byte(&[4]),
+        hash_crypto_byte(&[5]),
+        hash_crypto_byte(&[6]),
+        hash_crypto_byte(&[7]),
+        hash_crypto_byte(&[8]),
+        hash_crypto_byte(&[9]),
+        hash_crypto_byte(&[10]),
+        hash_crypto_byte(&[11]),
+        hash_crypto_byte(&[12]),
+        hash_crypto_byte(&[13]),
+        hash_crypto_byte(&[14]),
+        hash_crypto_byte(&[15]),
     ];
     tree.build_base_leafs(base_leafs.clone());
     tree.build_tree();
@@ -389,10 +388,10 @@ fn test_single_tree() {
 fn test_audit_tree() {
     let mut tree = Tree::new();
     let mut base_leafs = vec![
-        hash_crypto(("leaf1").as_bytes().to_vec().as_slice()),
-        hash_crypto(("leaf2").as_bytes().to_vec().as_slice()),
-        hash_crypto(("leaf3").as_bytes().to_vec().as_slice()),
-        hash_crypto(("leaf4").as_bytes().to_vec().as_slice()),
+        hash_crypto_byte(("leaf1").as_bytes().to_vec().as_slice()),
+        hash_crypto_byte(("leaf2").as_bytes().to_vec().as_slice()),
+        hash_crypto_byte(("leaf3").as_bytes().to_vec().as_slice()),
+        hash_crypto_byte(("leaf4").as_bytes().to_vec().as_slice()),
     ];
     tree.build_base_leafs(base_leafs.clone());
     tree.build_tree();
