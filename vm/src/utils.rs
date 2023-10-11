@@ -3,7 +3,7 @@ use state::AccountFrame;
 use std::str::FromStr;
 use types::error::VmError;
 use utils::general::{address_add_prefix, address_filter_prefix};
-pub const ADDRESS_PREFIX: &str = "did:gdt:0x";
+pub const ADDRESS_PREFIX: &str = "did:gdt";
 pub struct AddressConverter;
 
 impl AddressConverter {

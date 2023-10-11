@@ -280,6 +280,7 @@ impl EvmExecutor {
         tx_env: &mut TxEnv,
         tx_raw: &SignedTransaction,
     ) -> std::result::Result<(), VmError> {
+        tx_env.caller = AddressConverter::to_evm_address(tx_raw.sender())?;
         tx_env.gas_limit = tx_raw.gas_limit();
         tx_env.gas_price = U256::from(tx_raw.gas_price());
         tx_env.gas_priority_fee = None;
