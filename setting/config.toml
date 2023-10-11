@@ -1,6 +1,6 @@
 # This is a TOML document. Boom.
 network_id = 8108773
-chain_id = "abc"
+chain_id = "2024"
 chain_hub = "bbc"
 ssl_enable = false
 node_address = "did:gdt:0x160b54be617f4bff07bd6c994fc6dd17a69d5e4e"
