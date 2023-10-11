@@ -17,7 +17,7 @@ impl AddressConverter {
     }
 
     pub fn from_evm_address(address: B160) -> String {
-        address_add_prefix(ADDRESS_PREFIX, &address.to_string())
+        address_add_prefix(ADDRESS_PREFIX, &format!("{address:?}"))
     }
 }
 
@@ -46,4 +46,30 @@ pub fn u256_2_u128(value: U256) -> u128 {
 
 pub fn u128_2_u256(value: u128) -> U256 {
     U256::from(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use revm::primitives::U256;
+
+    #[test]
+    fn to_evm_address_test() {
+        let addr = "did:gdt:0xf6b02a2d47b84e845b7e3623355f041bcb36daf1";
+        match AddressConverter::to_evm_address(addr){
+            Ok(a) => {
+                //let addr = format!("0x:{:02x}", a);
+                let addr = format!("{a:?}");
+                let addr2 = format!("{a:#}");
+                println!("{:?}", addr);
+                println!("{:?}", addr2);
+            },
+            Err(e) => println!("error {}", e.to_string()),
+        };
+    }
+
+    fn from_evm_address_test() {
+        //AddressConverter::from_evm_address(value);
+        let value = U256::from(10000000);
+    }
 }
