@@ -19,7 +19,7 @@ use parking_lot::RwLock;
 use rayon::prelude::*;
 use std::{
     sync::Arc,
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tokio::{
     runtime::{Builder, Handle, Runtime},
@@ -266,9 +266,7 @@ pub(crate) async fn process_committed<V>(smp: Shared<V>, msg: TxPoolCommitNotifi
 where
     V: Validation,
 {
-    let tx_size = msg.transactions.len();
     let pool = &smp.pool;
-    let start = Instant::now();
     msg.transactions
         .par_iter()
         .for_each(|(sender, transaction)| {

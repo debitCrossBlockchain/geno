@@ -9,7 +9,6 @@ use crate::{
 use network::PeerNetwork;
 use protobuf::{Message, RepeatedField};
 use protos::common::{ProtocolsMessage, ProtocolsMessageType};
-use tracing::{info, error};
 use std::{cmp::max, collections::HashMap, time::Duration};
 use utils::TransactionSign;
 
@@ -114,39 +113,40 @@ impl Pool {
     pub(crate) fn broadcast(&mut self) {
         //broadcast msg
         let len = self.broadcast_cache.len();
-        if len > 0 {
-            let mut broadcast = protos::ledger::TransactionSignBrodcast::default();
-
-            if self.broadcast_cache.len() <= self.broadcast_max_batch_size {
-                let vec = self.broadcast_cache.drain(..).collect::<Vec<_>>();
-                let mut vec_signs: Vec<TransactionSign> = Vec::new();
-                for it in vec {
-                    vec_signs.push(it.convert_into());
-                }
-                broadcast.set_transactions(RepeatedField::from(vec_signs));
-            } else {
-                let vec = self
-                    .broadcast_cache
-                    .drain(0..self.broadcast_max_batch_size)
-                    .collect::<Vec<_>>();
-                let mut vec_signs: Vec<TransactionSign> = Vec::new();
-                for it in vec {
-                    vec_signs.push(it.convert_into());
-                }
-                broadcast.set_transactions(RepeatedField::from(vec_signs));
-            }
-
-            let mut message = ProtocolsMessage::new();
-            message.set_msg_type(ProtocolsMessageType::TRANSACTION);
-            message.set_data(broadcast.write_to_bytes().unwrap());
-            message.set_timestamp(chrono::Local::now().timestamp_millis());
-            if let Some(ref network) = self.network {
-                network.broadcast_msg(message);
-            }
-
-            let sended_txs = Self::classify(broadcast.get_transactions());
-            self.transactions.flag_send(&sended_txs);
+        if len <= 0 {
+            return;
         }
+
+        let mut broadcast = protos::ledger::TransactionSignBrodcast::default();
+        if self.broadcast_cache.len() <= self.broadcast_max_batch_size {
+            let vec = self.broadcast_cache.drain(..).collect::<Vec<_>>();
+            let mut vec_signs: Vec<TransactionSign> = Vec::new();
+            for it in vec {
+                vec_signs.push(it.convert_into());
+            }
+            broadcast.set_transactions(RepeatedField::from(vec_signs));
+        } else {
+            let vec = self
+                .broadcast_cache
+                .drain(0..self.broadcast_max_batch_size)
+                .collect::<Vec<_>>();
+            let mut vec_signs: Vec<TransactionSign> = Vec::new();
+            for it in vec {
+                vec_signs.push(it.convert_into());
+            }
+            broadcast.set_transactions(RepeatedField::from(vec_signs));
+        }
+
+        let mut message = ProtocolsMessage::new();
+        message.set_msg_type(ProtocolsMessageType::TRANSACTION);
+        message.set_data(broadcast.write_to_bytes().unwrap());
+        message.set_timestamp(chrono::Local::now().timestamp_millis());
+        if let Some(ref network) = self.network {
+            network.broadcast_msg(message);
+        }
+
+        let sended_txs = Self::classify(broadcast.get_transactions());
+        self.transactions.flag_send(&sended_txs);
     }
 
     fn classify(arr: &[TransactionSign]) -> HashMap<String, Vec<u64>> {

@@ -199,7 +199,7 @@ impl Store {
 
         for (sender, set) in self.transactions.iter() {
             if let Some(account_sequence) = seq_cache.get(sender) {
-                for (seq, tx) in set.iter() {
+                for (_, tx) in set.iter() {
                     if tx.state != TxState::Sended {
                         break;
                     }
@@ -210,10 +210,8 @@ impl Store {
                         .entry(sender.clone())
                         .or_insert(*account_sequence);
                     let last_seq = tracing_seqs.get(sender).unwrap();
-                    if tx_seq != 0{
-                        if tx_seq != *last_seq + 1 {
-                            break;
-                        }
+                    if tx_seq != 0 && tx_seq != (*last_seq + 1) {
+                        break;
                     }
                     tracing_seqs.insert(sender.clone(), tx_seq);
                     priority_index.insert(tx);

@@ -142,7 +142,7 @@ impl Validation for Validator {
                         ));
                     }
                 }
-                Err(e) => {
+                Err(_) => {
                     return Ok(ValidatorResult::new(
                         Some(TxPoolValidationStatusCode::InvalidSignature),
                         0,
@@ -310,7 +310,7 @@ pub fn get_account_nonce_banace(_account_address: &str) -> Result<(u64, u128)> {
                 ));
             }
         },
-        Err(e) => {
+        Err(_) => {
             return Err(anyhow::anyhow!(
                 "account you are looking for does not exist,trie error"
             ))
