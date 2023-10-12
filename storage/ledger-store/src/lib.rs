@@ -136,8 +136,14 @@ impl LedgerStorage {
     pub fn store_ledger(
         batch: &mut MemWriteBatch,
         header: &LedgerHeader,
-        txs: &HashMap<Vec<u8>, TransactionSignStore>,
+        txs: &mut HashMap<Vec<u8>, TransactionSignStore>,
     ) {
+        let _ = txs.iter_mut().map(|(_, t)| {
+            t.mut_transaction_result()
+                .set_block_hash(header.get_hash().to_vec());
+            t.mut_transaction_result()
+                .set_block_height(header.get_height());
+        });
         Self::store_ledger_header(batch, header);
         Self::store_ledger_tx_list(batch, header, txs);
         Self::store_ledger_tx(batch, txs);

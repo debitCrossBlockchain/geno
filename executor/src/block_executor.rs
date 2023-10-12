@@ -16,7 +16,7 @@ use state_store::StateStorage;
 use std::collections::HashMap;
 use storage_db::{MemWriteBatch, WriteBatchTrait, STORAGE_INSTANCE_REF};
 use syscontract::system_address::is_system_contract;
-use tracing::{info, error};
+use tracing::{error, info};
 use types::error::BlockExecutionError;
 use types::transaction::SignedTransaction;
 use utils::{
@@ -234,7 +234,7 @@ impl BlockExecutor {
         );
 
         let mut ledger_batch = MemWriteBatch::new();
-        LedgerStorage::store_ledger(&mut ledger_batch, &header, &txs_store);
+        LedgerStorage::store_ledger(&mut ledger_batch, &header, &mut txs_store);
         LedgerStorage::commit(ledger_batch)?;
 
         LAST_COMMITTED_BLOCK_INFO_REF
@@ -399,7 +399,7 @@ impl BlockExecutor {
         // };
 
         let mut ledger_batch = MemWriteBatch::new();
-        LedgerStorage::store_ledger(&mut ledger_batch, &header, &txs_store);
+        LedgerStorage::store_ledger(&mut ledger_batch, &header, &mut txs_store);
         LedgerStorage::commit(ledger_batch)?;
 
         Ok(())
