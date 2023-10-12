@@ -151,8 +151,12 @@ fn handle_text_message(conn_id: &str, msg: Message, connections: WsConnections) 
 }
 
 fn send_text_response(conn_id: &str, response: JsonRpcResponse, connections: WsConnections) {
-    let js = serde_json::to_string(&response).unwrap();
-    connections.send_to(conn_id, Message::text(js));
+    match serde_json::to_string(&response) {
+        Ok(js) => connections.send_to(conn_id, Message::text(js)),
+        Err(e) => {
+            eprintln!("error while message convert to str");
+        }
+    }
 }
 
 fn handle_bytes_message(conn_id: &str, msg: Message, connections: WsConnections) {

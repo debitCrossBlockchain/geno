@@ -18,6 +18,7 @@ pub fn proto_to_json(message: &dyn Message) -> serde_json::Value {
 }
 
 fn field_to_json(m: &dyn Message, fd: &FieldDescriptor) -> Option<serde_json::Value> {
+    // println!("field name: {:?}", fd.name().to_string());
     if fd.is_repeated() {
         match fd.len_field(m) {
             0 => None,
@@ -66,11 +67,7 @@ fn repeated_entry_as_value(pbval: &dyn protobuf::reflect::ProtobufValue) -> serd
         ProtobufValueRef::F64(x) => Value::Number(Number::from_f64(x).expect("repeated f64")),
         ProtobufValueRef::Enum(x) => serde_json::Value::String(x.name().to_string()),
         ProtobufValueRef::String(x) => serde_json::Value::String(x.to_string()),
-        ProtobufValueRef::Bytes(x) => serde_json::Value::String(
-            std::str::from_utf8(x)
-                .expect("repeated bytes to string")
-                .to_string(),
-        ),
+        ProtobufValueRef::Bytes(x) => serde_json::Value::String(msp::bytes_to_hex_str(x)),
         ProtobufValueRef::Message(x) => proto_to_json(x),
     }
 }

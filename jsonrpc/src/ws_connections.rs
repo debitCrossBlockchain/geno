@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 use utils::{general::hash_crypto_byte, proto2json::proto_to_json};
 use warp::{ws::Message, Filter, Rejection};
 
-use crate::errors::JsonRpcError;
+use crate::{errors::JsonRpcError, response::JsonRpcResponse};
 
 pub const TOPIC_TRANSACTIONS: &str = "transactions";
 pub const TOPIC_HEADERS: &str = "headers";
@@ -198,8 +198,17 @@ impl WsConnections {
                 if let Some(value) = event.contain(topic) {
                     if let Some(sender) = &conn.sender {
                         let john = proto_to_json(value);
-                        if let Err(e) = sender.send(Ok(Message::text(john.to_string()))) {
-                            eprintln!("send to client error: {}", e);
+                        let mut response = JsonRpcResponse::new(self.chain_id.clone());
+                        response.result = Some(john);
+                        match serde_json::to_string(&response) {
+                            Ok(js) => {
+                                if let Err(e) = sender.send(Ok(Message::text(js))) {
+                                    eprintln!("send to client error: {}", e);
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("error while message convert to str");
+                            }
                         }
                     }
                 }
@@ -219,7 +228,7 @@ impl WsConnections {
                     if params.len() != 1 {
                         return Err(JsonRpcError::invalid_params_size(format!("ws subscribe")));
                     }
-                    return Ok(SubscribeTopic::Transactions(TOPIC_HEADERS.to_string()));
+                    return Ok(SubscribeTopic::Headers(TOPIC_HEADERS.to_string()));
                 } else if sub_type == TOPIC_LOGS {
                     if params.len() != 2 {
                         return Err(JsonRpcError::invalid_params_size(format!("ws subscribe")));

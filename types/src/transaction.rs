@@ -148,6 +148,8 @@ impl TryFrom<TransactionSign> for SignedTransaction {
 
 #[cfg(test)]
 mod tests {
+    use utils::proto2json::proto_to_json;
+
     use super::*;
 
     #[test]
@@ -180,5 +182,24 @@ mod tests {
             Err(e) => panic!("{}", e),
         };
         println!("sign_transaction2 {}", sign_transaction2.hash_hex());
+    }
+
+    #[test]
+    fn proto_to_json_test() {
+        let mut header = LedgerHeader::default();
+        header.set_height(1);
+        header.set_previous_hash(vec![
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+        ]);
+        let mut kv = protos::common::KeyValuePair::default();
+        kv.set_key("BFT_CONSENSUS_VALUE_HASH".to_string());
+        kv.set_value(vec![
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+        ]);
+        header.mut_extended_data().mut_extra_data().push(kv);
+
+        let john = proto_to_json(&header);
+        // println!("{}", john);
+        println!("{}", john.to_string());
     }
 }

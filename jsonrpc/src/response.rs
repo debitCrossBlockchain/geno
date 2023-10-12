@@ -19,7 +19,7 @@ impl JsonRpcResponse {
         Self {
             chain_id,
             jsonrpc: "2.0".to_string(),
-            id: None,
+            id: Some(serde_json::Value::Number(1.into())),
             result: None,
             error: None,
         }
