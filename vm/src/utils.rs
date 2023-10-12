@@ -44,6 +44,17 @@ pub fn u256_2_u128(value: U256) -> u128 {
     u256.as_u128()
 }
 
+pub fn U256_into<T:TryFrom<U256>>(value: U256) -> std::result::Result<T, VmError> {
+    match T::try_from(value){
+        Ok(value) => Ok(value),
+        Err(_) => {
+            return Err(VmError::ValueConvertError {
+                error: "key value to u256 error".to_string(),
+            });
+        },
+    }
+}
+
 pub fn u128_2_u256(value: u128) -> U256 {
     U256::from(value)
 }
@@ -68,8 +79,25 @@ mod tests {
         };
     }
 
-    fn from_evm_address_test() {
+    #[test]
+    fn U256_into_u64_test() {
         //AddressConverter::from_evm_address(value);
         let value = U256::from(10000000);
+        let data:u64 =  match U256_into(value){
+            Ok(a) => a,
+            Err(e) => panic!("error {}", e.to_string()),
+        };
+        assert!(data == 10000000);
+    }
+
+    #[test]
+    fn U256_into_u128_test() {
+        //AddressConverter::from_evm_address(value);
+        let value = U256::from(90000000);
+        let data:u64 =  match U256_into(value){
+            Ok(a) => a,
+            Err(e) => panic!("error {}", e.to_string()),
+        };
+        assert!(data == 90000000);
     }
 }

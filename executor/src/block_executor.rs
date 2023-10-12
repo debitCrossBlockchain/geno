@@ -76,7 +76,7 @@ impl BlockExecutor {
                     continue;
                 }
             } else {
-                if let Err(e) = vm.execute(index, &tx_raw, &mut post_state) {
+                if let Err(e) = vm.evm_execute(index, &tx_raw, &mut post_state) {
                     let error = BlockExecutionError::VmError {
                         error: format!("vm execute error {e:?}"),
                     };
