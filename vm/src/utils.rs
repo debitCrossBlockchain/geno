@@ -94,7 +94,7 @@ mod tests {
     fn U256_into_u128_test() {
         //AddressConverter::from_evm_address(value);
         let value = U256::from(90000000);
-        let data:u64 =  match U256_into(value){
+        let data:u128 =  match U256_into(value){
             Ok(a) => a,
             Err(e) => panic!("error {}", e.to_string()),
         };
