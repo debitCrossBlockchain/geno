@@ -15,7 +15,7 @@ use state::{cache_state::StateMapActionType, AccountFrame, CacheState, TrieHash,
 use state_store::StateStorage;
 use std::collections::HashMap;
 use storage_db::{MemWriteBatch, WriteBatchTrait, STORAGE_INSTANCE_REF};
-use syscontract::system_address::is_system_contract;
+use syscontract::{contract_factory::SystemContractFactory, system_address::is_system_contract};
 use tracing::{error, info};
 use types::error::BlockExecutionError;
 use types::transaction::SignedTransaction;
@@ -267,6 +267,13 @@ impl BlockExecutor {
             validator.set_pledge_amount(0);
             validator_set.mut_validators().push(validator);
         }
+
+        // system contract
+        let sys_accts = SystemContractFactory::instance().all_account();
+        for account in sys_accts {
+            state.upsert(&account.address(), account.clone());
+        }
+
         state.commit();
 
         // set bolck header

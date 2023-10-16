@@ -9,6 +9,10 @@ use consensus_pbft::bootstrap::start_consensus;
 use executor::BlockExecutor;
 use jsonrpc::bootstrap::start_jsonrpc_service;
 use network::{NetworkConfigType, PeerNetwork};
+use syscontract::{
+    contract_factory::initialize_system_contract_factory,
+    system_address::initialize_syscontract_address,
+};
 use tx_pool::start_txpool_service;
 use utils::{logger::LogUtil, timer_manager::initialize_timer_manager};
 
@@ -19,12 +23,14 @@ fn main() {
         eprintln!("Error: {err:?}");
         std::process::exit(1);
     }
+    initialize_syscontract_address();
+    initialize_system_contract_factory();
+    initialize_timer_manager();
 
     if let Err(e) = BlockExecutor::block_initialize() {
         eprintln!("start block error:{}", e);
         std::process::exit(1);
     }
-    initialize_timer_manager();
 
     let network = PeerNetwork::start_service("peers", NetworkConfigType::Normal);
     let network_consensus =

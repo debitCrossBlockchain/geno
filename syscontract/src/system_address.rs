@@ -27,6 +27,13 @@ pub fn is_system_contract(address: &String) -> bool {
     SYSTEM_CONTRACT_ADDRESS.contains(address)
 }
 
+pub fn get_system_address(index: usize) -> Option<String> {
+    if let Some(addr) = SYSTEM_CONTRACT_ADDRESS.get(index) {
+        return Some(addr.clone());
+    }
+    None
+}
+
 pub fn initialize_syscontract_address() {
     let _ = SYSTEM_CONTRACT_ADDRESS.len();
 }

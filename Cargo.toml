@@ -43,6 +43,7 @@ geno-cmd = { path = "./geno-cmd", version = "0.1.0" }
 jsonrpc = { path = "./jsonrpc", version = "0.1.0" }
 tx-pool = { path = "./tx-pool", version = "0.1.0" }
 consensus-pbft = { path = "./consensus/consensus-pbft", version = "0.1.0" }
+syscontract = { path = "./syscontract", version = "0.1.0" }
 futures = "0.3.12"
 
 [build-dependencies]

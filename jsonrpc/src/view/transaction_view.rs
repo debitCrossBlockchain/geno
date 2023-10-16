@@ -191,14 +191,18 @@ impl TransactionRaw {
             )));
         }
 
+        let mut is_sys_address = false;
         protocol_tx.set_source(self.source.clone());
         protocol_tx.set_nonce(self.nonce);
         if let Some(to) = &self.to {
             protocol_tx.set_to(to.clone());
+            if is_system_contract(to) {
+                is_sys_address = true;
+            }
         }
         protocol_tx.set_value(self.value.clone());
 
-        if is_system_contract(&self.source) {
+        if is_sys_address {
             if let Some(payload) = &self.payload {
                 protocol_tx.set_payload(payload.as_bytes().to_vec());
             }
