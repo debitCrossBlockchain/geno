@@ -6,6 +6,7 @@ pub static SYSTEM_CONTRACT_ADDRESS: Lazy<Vec<String>> = Lazy::new(|| {
     let mut vec = Vec::new();
     for i in 1..=50 {
         if let Some(addr) = generate_contract_address("sysaddress", i) {
+            println!("syscontract address: {} {}", i, &addr);
             vec.push(addr);
         }
     }

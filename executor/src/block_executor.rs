@@ -15,7 +15,10 @@ use state::{cache_state::StateMapActionType, AccountFrame, CacheState, TrieHash,
 use state_store::StateStorage;
 use std::collections::HashMap;
 use storage_db::{MemWriteBatch, WriteBatchTrait, STORAGE_INSTANCE_REF};
-use syscontract::{contract_factory::SystemContractFactory, system_address::is_system_contract};
+use syscontract::{
+    contract_factory::{SystemContractFactory, VALIDATORS_ELECT_CONTRACT_INDEX},
+    system_address::{get_system_address, is_system_contract},
+};
 use tracing::{error, info};
 use types::error::BlockExecutionError;
 use types::transaction::SignedTransaction;
@@ -95,12 +98,7 @@ impl BlockExecutor {
         state.commit();
         let tx_result_set = post_state.convert_to_geno_txresult(header.get_height());
 
-        let new_validator_set = {
-            LAST_COMMITTED_BLOCK_INFO_REF
-                .read()
-                .get_validators()
-                .clone()
-        };
+        let new_validator_set = Self::filter_new_validators(&tx_result_set);
         let result = BlockResult {
             state,
             tx_result_set,
@@ -177,8 +175,23 @@ impl BlockExecutor {
             let mut tx_store = TransactionSignStore::default();
             let tx_hash = t.hash().to_vec();
 
-            tx_store.set_transaction_sign(block.get_transaction_signs().get(i).unwrap().clone());
-            tx_store.set_transaction_result(result.tx_result_set.get(i).unwrap().clone());
+            let tx_sign = match block.get_transaction_signs().get(i) {
+                Some(v) => v.clone(),
+                None => {
+                    error!("get tx sign error");
+                    return Err(anyhow::anyhow!("get tx sign error"));
+                }
+            };
+            let tx_result = match result.tx_result_set.get(i) {
+                Some(v) => v.clone(),
+                None => {
+                    error!("get tx result error");
+                    return Err(anyhow::anyhow!("get tx result error"));
+                }
+            };
+
+            tx_store.set_transaction_sign(tx_sign);
+            tx_store.set_transaction_result(tx_result);
             txs_store.insert(tx_hash.clone(), tx_store);
             txs_leafs.push(tx_hash.clone());
 
@@ -684,5 +697,27 @@ impl BlockExecutor {
         };
 
         Ok(())
+    }
+
+    fn filter_new_validators(tx_result_set: &[TransactionResult]) -> ValidatorSet {
+        if let Some(contract_address) = get_system_address(VALIDATORS_ELECT_CONTRACT_INDEX) {
+            for tx_result in tx_result_set {
+                for event in tx_result.get_contract_result().get_contract_event() {
+                    if event.get_address() == contract_address {
+                        let mut validator_set = ValidatorSet::default();
+                        for topic in event.get_topic() {
+                            let mut v = Validator::default();
+                            v.set_address(topic.clone());
+                            validator_set.mut_validators().push(v);
+                        }
+                        return validator_set;
+                    }
+                }
+            }
+        }
+        LAST_COMMITTED_BLOCK_INFO_REF
+            .read()
+            .get_validators()
+            .clone()
     }
 }
