@@ -13,6 +13,8 @@ use crate::{
     validators_elect_contract::{ValidatorsElectContract, VALIDATORS_KEY},
 };
 
+pub const VALIDATORS_ELECT_CONTRACT_INDEX: usize = 0;
+
 #[derive(Clone)]
 pub struct SystemContract(
     Arc<Mutex<Box<dyn SystemContractTrait<Context = ContractContext> + Send + 'static>>>,
@@ -44,7 +46,11 @@ impl SystemContractFactory {
         let mut contracts: HashMap<String, SystemContract> = HashMap::new();
         let mut contract_accounts: HashMap<String, AccountFrame> = HashMap::new();
 
-        Self::init_validators_elect_contract(&mut contracts, &mut contract_accounts, 0);
+        Self::init_validators_elect_contract(
+            &mut contracts,
+            &mut contract_accounts,
+            VALIDATORS_ELECT_CONTRACT_INDEX,
+        );
         SystemContractFactory {
             contracts: RwLock::new(contracts),
             contract_accounts: RwLock::new(contract_accounts),
@@ -61,13 +67,13 @@ impl SystemContractFactory {
         block_height: u64,
         block_timestamp: i64,
         tx_hash: &String,
-    ) -> std::result::Result<(), BlockExecutionError> {
+    ) -> std::result::Result<ContractResult, BlockExecutionError> {
         match state.get(&contract_address) {
             Ok(acct) => {
                 if acct.is_none() {
                     // is create sys contract
                     self.create_system_contract(&invoker_address, &contract_address);
-                    return Ok(());
+                    return Ok(ContractResult::new());
                 }
             }
             Err(e) => {
@@ -116,8 +122,8 @@ impl SystemContractFactory {
                         result
                     }
                 };
-                // if contract_result.err_code == 0 {}
-                return Ok(());
+
+                return Ok(contract_result);
             }
             Err(e) => {
                 return Err(BlockExecutionError::TransactionParamError {

@@ -22,7 +22,7 @@ pub fn execute<E: BlockEnv>(
 
     let tx_hash = transaction.hash_hex();
 
-    let _ = match system_contract.invoke(
+    let contract_result = match system_contract.invoke(
         String::new(),
         transaction.payload(),
         state,
@@ -32,7 +32,7 @@ pub fn execute<E: BlockEnv>(
         env.timestamp(),
         &tx_hash,
     ) {
-        Ok(_) => (),
+        Ok(result) => result,
         Err(e) => {
             return Err(VmError::VMExecuteError {
                 hash: tx_hash,
@@ -41,17 +41,17 @@ pub fn execute<E: BlockEnv>(
         }
     };
 
-    post_state.add_receipt(
-        env.height(),
-        Receipt {
-            index: index,
-            success: true,
-            gas_used: 0,
-            contract_address: None,
-            output: None,
-            logs: vec![],
-        },
-    );
+    let mut receipt = match Receipt::from_contract_result(&contract_result) {
+        Ok(receipt) => receipt,
+        Err(e) => {
+            return Err(VmError::InternalError {
+                error: e.to_string(),
+            })
+        }
+    };
+
+    receipt.index = index;
+    post_state.add_receipt(env.height(), receipt);
 
     return Ok(());
 }

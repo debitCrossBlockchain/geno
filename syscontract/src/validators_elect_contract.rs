@@ -300,7 +300,7 @@ impl ValidatorsElectContract {
 
         let mut event = ContractEvent::default();
         event.set_address(self.contract_address());
-        event.set_data(protobuf::RepeatedField::from(vs));
+        event.set_topic(protobuf::RepeatedField::from(vs));
 
         result.mut_contract_event().push(event);
     }

@@ -1,21 +1,24 @@
-
 use std::collections::BTreeMap;
 
-use crate::{database::{State, VmState}, utils::AddressConverter, PostState, post_state::{Receipt, PostAccount}};
+use crate::{
+    database::{State, VmState},
+    post_state::{PostAccount, Receipt},
+    utils::AddressConverter,
+    PostState,
+};
+use bytes::Bytes;
 use protos::ledger::LedgerHeader;
 use revm::{
     db::{AccountState, CacheDB, DatabaseRef},
     primitives::{
         hash_map::{self, Entry},
-        Account as RevmAccount, AccountInfo, BlockEnv, ExecutionResult, Output, ResultAndState,
-        TransactTo, TxEnv, B160, KECCAK_EMPTY, U256, CfgEnv, AnalysisKind, B256
+        Account as RevmAccount, AccountInfo, AnalysisKind, BlockEnv, CfgEnv, ExecutionResult,
+        Output, ResultAndState, TransactTo, TxEnv, B160, B256, KECCAK_EMPTY, U256,
     },
     EVM,
 };
-use bytes::Bytes;
 use state::CacheState;
-use types::{SignedTransaction, error::VmError};
-
+use types::{error::VmError, SignedTransaction};
 
 pub struct EvmVM {
     evm: EVM<VmState>,
@@ -26,10 +29,8 @@ impl EvmVM {
         let vm_state = VmState::new(State::new(cache_state.clone()));
         let mut evm = EVM::new();
         evm.database(vm_state);
-        
-        Ok(EvmVM {
-            evm,
-        })
+
+        Ok(EvmVM { evm })
     }
 
     pub fn execute(
@@ -38,7 +39,7 @@ impl EvmVM {
         transaction: &SignedTransaction,
         post_state: &mut PostState,
     ) -> std::result::Result<(), VmError> {
-        self.fill_tx_env( &transaction)?;
+        self.fill_tx_env(&transaction)?;
 
         // main execution.
         let out = self.evm.transact();
@@ -61,13 +62,13 @@ impl EvmVM {
             _ => (None, None),
         };
 
-        let blocknum = match u64::try_from(self.evm.env.block.number){
+        let blocknum = match u64::try_from(self.evm.env.block.number) {
             Ok(n) => n,
             Err(e) => {
                 return Err(VmError::InternalError {
                     error: format!("{:?}", e),
                 });
-            },
+            }
         };
         self.commit_changes(blocknum, state, true, post_state);
 
@@ -83,6 +84,7 @@ impl EvmVM {
                 output: output,
                 // convert to reth log
                 logs: result.into_logs().into_iter().collect(),
+                description: None,
             },
         );
 
@@ -255,10 +257,7 @@ impl EvmVM {
         }
     }
 
-    fn fill_tx_env(
-        &mut self,
-        tx_raw: &SignedTransaction,
-    ) -> std::result::Result<(), VmError> {
+    fn fill_tx_env(&mut self, tx_raw: &SignedTransaction) -> std::result::Result<(), VmError> {
         self.evm.env.tx.caller = AddressConverter::to_evm_address(tx_raw.sender())?;
         self.evm.env.tx.gas_limit = tx_raw.gas_limit();
         self.evm.env.tx.gas_price = U256::from(tx_raw.gas_price());
@@ -292,10 +291,7 @@ impl EvmVM {
         Ok(())
     }
 
-    fn fill_block_env(
-        &mut self,
-        header: &LedgerHeader,
-    ) -> std::result::Result<(), VmError> {
+    fn fill_block_env(&mut self, header: &LedgerHeader) -> std::result::Result<(), VmError> {
         self.evm.env.block.number = U256::from(header.get_height());
         self.evm.env.block.coinbase = AddressConverter::to_evm_address(header.get_proposer())?;
         self.evm.env.block.timestamp = U256::from(header.get_timestamp());
@@ -307,10 +303,7 @@ impl EvmVM {
         Ok(())
     }
 
-    fn fill_cfg_env(
-        &mut self,
-        header: &LedgerHeader,
-    ) -> std::result::Result<(), VmError> {
+    fn fill_cfg_env(&mut self, header: &LedgerHeader) -> std::result::Result<(), VmError> {
         let chain_id = match u64::from_str_radix(header.get_chain_id(), 10) {
             Ok(value) => value,
             Err(e) => {
