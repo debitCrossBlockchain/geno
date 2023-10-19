@@ -49,6 +49,7 @@ pub struct TransactionResultView {
     pub gas_used: u64,
     pub events: Vec<ContractEventView>,
     pub index: i32,
+    pub result: (String, Vec<u8>),
 }
 
 impl From<&TransactionSignStore> for TransactionResultView {
@@ -82,6 +83,7 @@ impl From<&TransactionSignStore> for TransactionResultView {
                 .iter()
                 .map(|e| ContractEventView::from(e))
                 .collect(),
+            result:(result.get_contract_result().get_message().to_string() ,result.get_contract_result().get_result().to_vec()),
         }
     }
 }
@@ -109,6 +111,7 @@ impl From<&TransactionSign> for TransactionResultView {
             gas_used: 0,
             index: -1,
             events: Vec::new(),
+            result: ("".to_string(), Vec::new()),
         }
     }
 }
