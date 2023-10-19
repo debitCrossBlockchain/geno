@@ -90,8 +90,7 @@ impl AccountFrame {
 
     pub fn has_contract(&self) -> bool {
         if self.account.has_contract() {
-            if !self.account.get_contract().get_name().is_empty()
-                && self.account.get_contract().get_code().len() != 0
+            if self.account.get_contract().get_code().len() != 0
             {
                 return true;
             }

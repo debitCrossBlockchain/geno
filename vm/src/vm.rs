@@ -15,8 +15,8 @@ use revm::{
     EVM,
 };
 use state::CacheState;
+use tracing::{error, info};
 use std::collections::BTreeMap;
-use tracing::error;
 use types::{error::VmError, transaction::SignedTransaction};
 
 pub struct EvmExecutor {
@@ -66,12 +66,12 @@ impl EvmExecutor {
         let ResultAndState { result, state } = ret_and_state;
         let (output, contract_address) = match result.clone() {
             ExecutionResult::Success { output, .. } => match output {
-                Output::Call(value) => (Some(value.into()), None),
-                Output::Create(value, address) => (Some(value.into()), address),
+                Output::Call(value) => (Some(value), None),
+                Output::Create(value, address) => (Some(value), address),
             },
             _ => (None, None),
         };
-
+        
         self.commit_changes(self.header.get_height(), state, true, post_state);
 
         post_state.add_receipt(
@@ -299,7 +299,7 @@ impl EvmExecutor {
         }
 
         tx_env.value = U256::from(tx_raw.value());
-        tx_env.data = Bytes::from(tx_raw.input().to_vec());
+        tx_env.data = Bytes::from(tx_raw.payload().to_vec());
 
         let chain_id = match u64::from_str_radix(tx_raw.chain_id(), 10) {
             Ok(value) => value,

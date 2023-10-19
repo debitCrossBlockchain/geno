@@ -52,7 +52,7 @@ impl DatabaseRef for State {
         let result = self.get_account(&key)?;
         if let Some(account) = result {
             let contract = account.contract();
-            let b = if account.has_contract() && account.contract().get_code().len() > 0 {
+            let b = if account.has_contract() {
                 Bytes::from(contract.get_code().to_vec())
             } else {
                 Bytes::default()
@@ -95,7 +95,7 @@ impl DatabaseRef for State {
         let result = self.get_account(&address)?;
         if let Some(account) = result {
             let contract = account.contract();
-            let b = if account.has_contract() && contract.get_code().len() > 0 {
+            let b = if account.has_contract() {
                 Bytes::from(contract.get_code().to_vec())
             } else {
                 Bytes::default()
