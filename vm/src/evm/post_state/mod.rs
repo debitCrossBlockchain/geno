@@ -7,7 +7,10 @@ use revm::primitives::{
 };
 use state::{AccountFrame, CacheState};
 use tracing::info;
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    str::FromStr,
+};
 use types::error::VmError;
 mod account;
 pub use account::{AccountChanges, PostAccount};
@@ -25,12 +28,25 @@ pub struct Receipt {
     pub gas_used: u64,
     pub contract_address: Option<B160>,
     pub output: Option<bytes::Bytes>,
+    pub description: Option<String>,
 }
 
 impl Receipt {
     // lack error code,message,block_hash,block_height to set
     pub fn convert_to_geno_txresult(&self) -> TransactionResult {
         let mut tx_result = TransactionResult::default();
+
+        let contract_result = self.to_contract_result();
+
+        tx_result.set_err_code(contract_result.get_err_code());
+        tx_result.set_contract_result(contract_result);
+        tx_result.set_gas_used(self.gas_used);
+        tx_result.set_index(self.index as u32);
+
+        tx_result
+    }
+
+    pub fn to_contract_result(&self) -> ContractResult {
         let mut contract_result = ContractResult::default();
 
         let mut events = Vec::new();
@@ -40,7 +56,7 @@ impl Receipt {
             let topics = log
                 .topics
                 .iter()
-                .map(|topic| topic.to_string())
+                .map(|topic| format!("{topic:?}"))
                 .collect::<Vec<_>>();
             contract_event.set_topic(topics.into());
             contract_event.set_data(vec![hex::encode(log.data.as_ref())].into());
@@ -49,19 +65,65 @@ impl Receipt {
 
         contract_result.set_contract_event(events.into());
         contract_result.set_err_code(if self.success == true { 0 } else { -1 });
-        if let Some(address) = self.contract_address {
-            contract_result.set_message(AddressConverter::from_evm_address(address));
+        if let Some(description) = &self.description {
+            contract_result.set_message(description.clone());
+        }
+        if let Some(address) = &self.contract_address {
+            contract_result.set_message(AddressConverter::from_evm_address(address.clone()));
         }
         if let Some(out) = &self.output {
             contract_result.set_result(out.to_vec());
         }
 
-        tx_result.set_err_code(contract_result.get_err_code());
-        tx_result.set_contract_result(contract_result);
-        tx_result.set_gas_used(self.gas_used);
-        tx_result.set_index(self.index as u32);
+        contract_result
+    }
 
-        tx_result
+    pub fn from_contract_result(contract_result: &ContractResult) -> anyhow::Result<Receipt> {
+        let mut logs = Vec::new();
+        for event in contract_result.get_contract_event().iter() {
+            let address = AddressConverter::to_evm_address(event.get_address())?;
+            let mut topics = Vec::new();
+            let mut bytes = bytes::BytesMut::default();
+
+            for t in event.get_topic().iter() {
+                let topic = B256::from_str(t)?;
+                topics.push(topic);
+            }
+            for data in event.get_data().iter() {
+                let value = hex::decode(data)?;
+                bytes.clone_from_slice(&value);
+                break;
+            }
+            let log = Log {
+                address,
+                topics,
+                data: bytes.freeze(),
+            };
+            logs.push(log);
+        }
+
+        let description = if contract_result.get_message().len() > 0 {
+            Some(contract_result.get_message().to_string())
+        } else {
+            None
+        };
+
+        let output = if contract_result.get_result().len() > 0 {
+            Some(bytes::Bytes::copy_from_slice(contract_result.get_result()))
+        } else {
+            None
+        };
+
+        let receipt = Receipt {
+            index: 0,
+            success: contract_result.get_err_code() == 0,
+            logs,
+            gas_used: 0,
+            contract_address: None,
+            output,
+            description,
+        };
+        Ok(receipt)
     }
 }
 
@@ -312,5 +374,29 @@ impl PostState {
 
     fn create_geno_account(address: String, post_account: &PostAccount) -> AccountFrame {
         AccountFrame::new(address, u256_2_u128(post_account.balance))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::Bytes;
+    use revm::primitives::{B160, B256, U256};
+    use std::str::FromStr;
+
+    #[test]
+    fn convert_test() {
+        let value = U256::from(10);
+        let v1 = B256::from(value);
+        println!("{}", v1.to_string());
+        println!("{}", &format!("{v1:?}"));
+
+        let v2 = B256::from_str("topics").unwrap();
+
+        if v1 != v2 {
+            println!("not equal");
+        } else {
+            println!("equal");
+        }
     }
 }

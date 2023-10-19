@@ -6,6 +6,7 @@ pub static SYSTEM_CONTRACT_ADDRESS: Lazy<Vec<String>> = Lazy::new(|| {
     let mut vec = Vec::new();
     for i in 1..=50 {
         if let Some(addr) = generate_contract_address("sysaddress", i) {
+            println!("syscontract address: {} {}", i, &addr);
             vec.push(addr);
         }
     }
@@ -25,6 +26,13 @@ pub fn generate_contract_address(address: &str, i: i32) -> Option<String> {
 
 pub fn is_system_contract(address: &String) -> bool {
     SYSTEM_CONTRACT_ADDRESS.contains(address)
+}
+
+pub fn get_system_address(index: usize) -> Option<String> {
+    if let Some(addr) = SYSTEM_CONTRACT_ADDRESS.get(index) {
+        return Some(addr.clone());
+    }
+    None
 }
 
 pub fn initialize_syscontract_address() {

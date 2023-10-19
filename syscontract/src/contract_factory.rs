@@ -2,14 +2,18 @@ use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use once_cell::sync::OnceCell;
 use parking_lot::{Mutex, RwLock};
-use protos::common::TransactionResult;
-use state::CacheState;
+use protos::common::{ContractResult, TransactionResult, Validator, ValidatorSet};
+use state::{AccountFrame, CacheState};
 use types::error::BlockExecutionError;
+use utils::{general::genesis_block_config, parse::ProtocolParser};
 
 use crate::{
-    contract::{ContractBaseInfo, ContractContext, SystemContractTrait},
-    validators_elect_contract::ValidatorsElectContract,
+    contract::{self, ContractBaseInfo, ContractContext, SystemContractTrait},
+    system_address::get_system_address,
+    validators_elect_contract::{ValidatorsElectContract, VALIDATORS_KEY},
 };
+
+pub const VALIDATORS_ELECT_CONTRACT_INDEX: usize = 0;
 
 #[derive(Clone)]
 pub struct SystemContract(
@@ -26,6 +30,7 @@ impl Deref for SystemContract {
 
 pub struct SystemContractFactory {
     pub contracts: RwLock<HashMap<String, SystemContract>>,
+    pub contract_accounts: RwLock<HashMap<String, AccountFrame>>,
 }
 
 pub static SYSTEM_CONTRACT_FACTORY_INSTANCE: OnceCell<SystemContractFactory> = OnceCell::new();
@@ -39,10 +44,16 @@ impl SystemContractFactory {
 
     pub fn initialize() -> SystemContractFactory {
         let mut contracts: HashMap<String, SystemContract> = HashMap::new();
+        let mut contract_accounts: HashMap<String, AccountFrame> = HashMap::new();
 
-        Self::init_validators_elect_contract(&mut contracts);
+        Self::init_validators_elect_contract(
+            &mut contracts,
+            &mut contract_accounts,
+            VALIDATORS_ELECT_CONTRACT_INDEX,
+        );
         SystemContractFactory {
             contracts: RwLock::new(contracts),
+            contract_accounts: RwLock::new(contract_accounts),
         }
     }
 
@@ -56,7 +67,22 @@ impl SystemContractFactory {
         block_height: u64,
         block_timestamp: i64,
         tx_hash: &String,
-    ) -> std::result::Result<(), BlockExecutionError> {
+    ) -> std::result::Result<ContractResult, BlockExecutionError> {
+        match state.get(&contract_address) {
+            Ok(acct) => {
+                if acct.is_none() {
+                    // is create sys contract
+                    self.create_system_contract(&invoker_address, &contract_address);
+                    return Ok(ContractResult::new());
+                }
+            }
+            Err(e) => {
+                return Err(BlockExecutionError::InternalError {
+                    error: format!("system contract state get error, {}", e),
+                });
+            }
+        }
+
         let contract = {
             let r = self.contracts.read();
             let contract = match r.get(&contract_address) {
@@ -87,9 +113,17 @@ impl SystemContractFactory {
         }
         match Self::parse_params(payload) {
             Ok((function, params)) => {
-                let contract_result = contract.lock().dispatch(&function, params);
-                // if contract_result.err_code == 0 {}
-                return Ok(());
+                let contract_result = match contract.lock().dispatch(&function, params) {
+                    Ok(result) => result,
+                    Err(e) => {
+                        let mut result = ContractResult::new();
+                        result.set_err_code(-1);
+                        result.set_message(format!("{}", e));
+                        result
+                    }
+                };
+
+                return Ok(contract_result);
             }
             Err(e) => {
                 return Err(BlockExecutionError::TransactionParamError {
@@ -125,14 +159,60 @@ impl SystemContractFactory {
         Ok((method, params))
     }
 
-    fn init_validators_elect_contract(contracts: &mut HashMap<String, SystemContract>) {
-        let validators_elect_address = "".to_string();
-        let contract = ValidatorsElectContract::new(validators_elect_address);
+    fn init_validators_elect_contract(
+        contracts: &mut HashMap<String, SystemContract>,
+        contract_accounts: &mut HashMap<String, AccountFrame>,
+        index: usize,
+    ) {
+        let validators_elect_address =
+            get_system_address(index).expect("get validators elect address");
+        let contract = ValidatorsElectContract::new(validators_elect_address.clone());
         contracts.insert(
             contract.contract_address(),
             SystemContract(Arc::new(Mutex::new(Box::new(contract)))),
         );
+
+        let genesis_block = genesis_block_config();
+        let genesis_account_address = genesis_block.genesis_account.clone();
+        let mut account =
+            Self::create_account_frame(&genesis_account_address, &validators_elect_address, 100000);
+
+        //create accounts of validators from config
+        let mut validator_set = ValidatorSet::new();
+        for address in genesis_block.validators.iter() {
+            let mut validator = Validator::new();
+            validator.set_address(address.clone());
+            validator.set_pledge_amount(0);
+            validator_set.mut_validators().push(validator);
+        }
+        account.upsert_contract_metadata(
+            VALIDATORS_KEY.as_bytes(),
+            &ProtocolParser::serialize::<ValidatorSet>(&validator_set),
+        );
+        contract_accounts.insert(validators_elect_address, account);
     }
+
+    pub fn create_account_frame(
+        creator: &str,
+        contract_address: &str,
+        balance: u128,
+    ) -> AccountFrame {
+        let mut contract = protos::ledger::Contract::default();
+        contract.set_creator(creator.to_string());
+        let mut account = AccountFrame::new(contract_address.to_string(), balance);
+        account.set_contract(&contract);
+        account
+    }
+
+    pub fn all_account(&self) -> Vec<AccountFrame> {
+        let mut arr = Vec::new();
+        for acct in self.contract_accounts.read().values() {
+            arr.push(acct.clone());
+        }
+        arr
+    }
+
+    pub fn create_system_contract(&self, creator: &str, contract_address: &str) {}
 }
 
 pub fn initialize_system_contract_factory() {

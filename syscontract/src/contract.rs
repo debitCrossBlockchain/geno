@@ -8,7 +8,11 @@ pub type ContractParameter = serde_json::Value;
 
 pub trait SystemContractTrait {
     type Context;
-    fn dispatch(&mut self, function: &str, params: ContractParameter) -> ContractResult;
+    fn dispatch(
+        &mut self,
+        function: &str,
+        params: ContractParameter,
+    ) -> anyhow::Result<ContractResult>;
     fn init_context(&mut self, context: Self::Context);
     fn contract_address(&self) -> String;
     fn invoker_address(&self) -> String;
