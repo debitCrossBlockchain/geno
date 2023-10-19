@@ -13,12 +13,10 @@ message LedgerHeader
   uint64 version = 8;
   uint64 tx_count = 9;
   uint64 total_tx_count = 10;
-  bytes  validators_hash = 11;
-  bytes  fees_hash = 12;
-  string hub_id = 13;
-  string chain_id = 14;
-  string proposer = 15;
-  ExtendedData extended_data = 16;
+  string hub_id = 11;
+  string chain_id = 12;
+  string proposer = 13;
+  ExtendedData extended_data = 14;
 }
 
 message Ledger{

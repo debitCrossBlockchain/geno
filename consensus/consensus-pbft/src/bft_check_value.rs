@@ -1,4 +1,5 @@
 use crate::{new_bft_message::NewBftMessage, utils::quorum_size, validators::Validators};
+use consensus_store::bft_storage::BftStorage;
 use executor::{BlockExecutor, LAST_COMMITTED_BLOCK_INFO_REF};
 use msp::bytes_to_hex_str;
 use protobuf::Message;
@@ -56,12 +57,13 @@ impl CheckValue {
         // current ledger 3, last_ledger_sequence 2, pre_pre_v_set 1
         if last_ledger_sequence > 1 {
             //Get the validator set for the pre pre ledger.
-            match StateStorage::get_validators_by_seq(bft_value.get_header().get_height() - 2) {
+            let pre_pre_sequence = bft_value.get_header().get_height() - 2;
+            match BftStorage::load_validators(pre_pre_sequence) {
                 Err(e) => {
                     error!(
                         parent: span,
                         "Failed to get validator of ledger ({}) in check_value, error:{}",
-                        bft_value.get_header().get_height() - 2,
+                        pre_pre_sequence,
                         e
                     );
                     return CheckValueResult::MayValid;
@@ -73,7 +75,7 @@ impl CheckValue {
                         error!(
                             parent: span,
                             "Failed to get validator of ledger ({}) in check_value, no validators",
-                            bft_value.get_header().get_height() - 2,
+                            pre_pre_sequence,
                         );
                         return CheckValueResult::MayValid;
                     }

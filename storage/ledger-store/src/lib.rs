@@ -144,6 +144,7 @@ impl LedgerStorage {
             t.mut_transaction_result()
                 .set_block_height(header.get_height());
         });
+        Self::store_max_block_height(batch, header.get_height());
         Self::store_ledger_header(batch, header);
         Self::store_ledger_tx_list(batch, header, txs);
         Self::store_ledger_tx(batch, txs);

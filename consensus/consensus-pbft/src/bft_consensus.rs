@@ -69,6 +69,25 @@ impl BftConsensus {
             Vec<TransactionResult>,
         )>,
     ) -> Self {
+        if last_seq >= 2 {
+            let validators =
+                BftStorage::load_validators(last_seq).expect("validator load failed {}");
+            let validators = match validators {
+                Some(validators) => validators,
+                None => {
+                    panic!("validator load none");
+                }
+            };
+
+            if hash_crypto_byte(&ProtocolParser::serialize::<ValidatorSet>(&validators))
+                != hash_crypto_byte(&ProtocolParser::serialize::<ValidatorSet>(validators_set))
+            {
+                panic!("validator not match");
+            }
+        } else {
+            BftStorage::store_validators(last_seq, validators_set);
+        }
+
         let view_number = BftStorage::load_view_number().unwrap_or(0);
         let mut state = BftState::new(last_seq, network_consensus.clone());
         state.view_number = view_number;
@@ -155,6 +174,7 @@ impl BftConsensus {
 
     pub fn update_validators(
         &mut self,
+        height: u64,
         validators: &ValidatorSet,
         proof: Option<BftProof>,
     ) -> bool {
@@ -223,6 +243,11 @@ impl BftConsensus {
                 self.view_number()
             );
             BftStorage::store_view_number(self.view_number());
+            // store_validators
+            BftStorage::store_validators(height, validators);
+            if height  > 3 {
+                let _ = BftStorage::delete_validators(height - 3);
+            }
             //Delete other incomplete view change instances or other view change instances whose sequence is less than 5.
             self.clear_view_changes();
             self.start_ledgerclose_check_timer();
@@ -417,7 +442,7 @@ impl BftConsensus {
                 .clone()
         };
         let proof = { LAST_COMMITTED_BLOCK_INFO_REF.read().get_proof() };
-        self.update_validators(&validator_set, proof);
+        self.update_validators(block.get_header().get_height(), &validator_set, proof);
 
         let validators: Vec<_> = validator_set
             .get_validators()

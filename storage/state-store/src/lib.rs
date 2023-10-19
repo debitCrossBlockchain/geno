@@ -60,36 +60,6 @@ impl StateStorage {
         batch.set(key, address.as_bytes().to_vec());
     }
 
-    pub fn load_validators(hash: &str) -> anyhow::Result<Option<ValidatorSet>> {
-        let result = STORAGE_INSTANCE_REF
-            .account_db()
-            .lock()
-            .get(&compose_prefix_str(VALIDATORS_PREFIX, hash))?;
-
-        if let Some(value) = result {
-            let validator_set = ProtocolParser::deserialize::<ValidatorSet>(&value)?;
-            Ok(Some(validator_set))
-        } else {
-            Ok(None)
-        }
-    }
-
-    pub fn get_validators_by_seq(seq: u64) -> anyhow::Result<Option<ValidatorSet>> {
-        if let Some(header) = LedgerStorage::load_ledger_header_by_seq(seq)? {
-            let validators_hash = hex::encode(header.get_validators_hash());
-            return Self::load_validators(&validators_hash);
-        }
-        Ok(None)
-    }
-
-    pub fn store_validators(batch: &mut MemWriteBatch, validators: &ValidatorSet) {
-        let validator_hash =
-            hash_crypto_byte(&ProtocolParser::serialize::<ValidatorSet>(&validators));
-
-        let key = compose_prefix_str(VALIDATORS_PREFIX, &hex::encode(validator_hash));
-        batch.set(key, ProtocolParser::serialize::<ValidatorSet>(validators));
-    }
-
     pub fn store_last_proof(batch: &mut MemWriteBatch, proof: &BftProof) {
         batch.set(
             LAST_PROOF.as_bytes().to_vec(),

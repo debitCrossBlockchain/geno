@@ -1,10 +1,13 @@
 use protobuf::{Message, RepeatedField};
+use protos::common::ValidatorSet;
 use storage_db::{MemWriteBatch, WriteBatchTrait, STORAGE_INSTANCE_REF};
+use utils::{general::compose_prefix_u64, parse::ProtocolParser};
 
 pub const CONSENSUS_PREFIX: &str = "consensus";
 pub const VIEW_ACTIVE: &str = "bft_view_active";
 pub const SEQUENCE_NAME: &str = "bft_sequence";
 pub const VIEW_NUMBER_NAME: &str = "bft_view_number";
+pub const VALIDATORS_PREFIX: &str = "validators";
 pub struct BftStorage {}
 
 impl BftStorage {
@@ -95,5 +98,33 @@ impl BftStorage {
 
     pub fn clear_status() {
         let _ = BftStorage::del_value(VIEW_NUMBER_NAME);
+    }
+
+    pub fn load_validators(seq: u64) -> anyhow::Result<Option<ValidatorSet>> {
+        let result = STORAGE_INSTANCE_REF
+            .key_value_db()
+            .lock()
+            .get(&compose_prefix_u64(VALIDATORS_PREFIX, seq))?;
+
+        if let Some(value) = result {
+            let validator_set = ProtocolParser::deserialize::<ValidatorSet>(&value)?;
+            Ok(Some(validator_set))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn store_validators(seq: u64, validators: &ValidatorSet) {
+        let validator_data = ProtocolParser::serialize::<ValidatorSet>(&validators);
+        let key = compose_prefix_u64(VALIDATORS_PREFIX, seq);
+        let _ = STORAGE_INSTANCE_REF
+            .key_value_db()
+            .lock()
+            .put(key, validator_data);
+    }
+
+    pub fn delete_validators(seq: u64) -> anyhow::Result<()> {
+        let key = compose_prefix_u64(VALIDATORS_PREFIX, seq);
+        STORAGE_INSTANCE_REF.key_value_db().lock().delete(key)
     }
 }

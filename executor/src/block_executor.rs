@@ -18,6 +18,7 @@ use storage_db::{MemWriteBatch, WriteBatchTrait, STORAGE_INSTANCE_REF};
 use syscontract::{
     contract_factory::{SystemContractFactory, VALIDATORS_ELECT_CONTRACT_INDEX},
     system_address::{get_system_address, is_system_contract},
+    VALIDATORS_KEY,
 };
 use tracing::{error, info};
 use types::error::BlockExecutionError;
@@ -161,7 +162,6 @@ impl BlockExecutor {
         } else {
             None
         };
-        StateStorage::store_validators(&mut state_batch, &result.validator_set);
         StateStorage::commit(state_batch)?;
 
         // set state hash
@@ -213,14 +213,6 @@ impl BlockExecutor {
             header.set_receips_hash(receips_tree.root());
         }
 
-        // caculate fee hash
-
-        // caculate validators hash
-        let validator_hash = hash_crypto_byte(&ProtocolParser::serialize::<ValidatorSet>(
-            &result.validator_set,
-        ));
-        header.set_validators_hash(validator_hash);
-
         // set consensus value hash
         let consensus_hash = Self::caculate_consensus_value_hash(block);
         Self::inject_consensus_value_hash(&mut header, consensus_hash.clone());
@@ -231,7 +223,7 @@ impl BlockExecutor {
         ));
 
         info!(
-            "commit block height({}) hash({}) previous_hash({}) state_hash({}) transactions_hash({}) receips_hash({}) timestamp({}) version({}) tx_count({}) total_tx_count({}) validators_hash({}) consensus_value_hash({})",
+            "commit block height({}) hash({}) previous_hash({}) state_hash({}) transactions_hash({}) receips_hash({}) timestamp({}) version({}) tx_count({}) total_tx_count({}) consensus_value_hash({})",
             header.get_height(),
             bytes_to_hex_str(header.get_hash()),
             bytes_to_hex_str(header.get_previous_hash()),
@@ -242,7 +234,6 @@ impl BlockExecutor {
             header.get_version(),
             header.get_tx_count(),
             header.get_total_tx_count(),
-            bytes_to_hex_str(header.get_validators_hash()),
             bytes_to_hex_str(&consensus_hash),
         );
 
@@ -358,8 +349,6 @@ impl BlockExecutor {
             &state_datas,
             &mut state_batch,
         )?;
-
-        StateStorage::store_validators(&mut state_batch, &result.validator_set);
         StateStorage::commit(state_batch)?;
 
         // verify state hash
@@ -479,38 +468,52 @@ impl BlockExecutor {
     }
 
     pub fn block_initialize() -> anyhow::Result<()> {
-        let (header, validators, proof) = if let Some(height) =
-            LedgerStorage::load_max_block_height()?
-        {
-            let header = LedgerStorage::load_ledger_header_by_seq(height)?;
-            if let Some(header) = header {
-                let result = StateStorage::load_validators(&hex::encode(header.get_state_hash()))?;
-                if let Some(validators) = result {
-                    let proof = StateStorage::load_last_proof()?;
-                    (header, validators, proof)
+        let (header, validators, proof) =
+            if let Some(height) = LedgerStorage::load_max_block_height()? {
+                let header = LedgerStorage::load_ledger_header_by_seq(height)?;
+                if let Some(header) = header {
+                    let result = Self::load_validators(header.get_state_hash())?;
+                    if let Some(validators) = result {
+                        let proof = StateStorage::load_last_proof()?;
+                        (header, validators, proof)
+                    } else {
+                        panic!("block initialize load validators failed:{}", height);
+                    }
                 } else {
-                    panic!("block initialize load validators failed:{}", height);
+                    panic!("block initialize load block header failed:{}", height);
                 }
             } else {
-                panic!("block initialize load block header failed:{}", height);
-            }
-        } else {
-            let (mut block, block_result) = Self::create_genesis_block();
-            if let Err(e) = Self::commit_block(&mut block, Vec::new(), &block_result) {
-                panic!("block initialize genesis failed:{}", e);
-            }
-            (
-                block.get_header().clone(),
-                block_result.validator_set.clone(),
-                None,
-            )
-        };
+                let (mut block, block_result) = Self::create_genesis_block();
+                if let Err(e) = Self::commit_block(&mut block, Vec::new(), &block_result) {
+                    panic!("block initialize genesis failed:{}", e);
+                }
+                (
+                    block.get_header().clone(),
+                    block_result.validator_set.clone(),
+                    None,
+                )
+            };
 
         LAST_COMMITTED_BLOCK_INFO_REF
             .write()
             .update(&header, &validators, proof);
 
         Ok(())
+    }
+
+    fn load_validators(state_hash: &[u8]) -> anyhow::Result<Option<ValidatorSet>> {
+        let mut root_hash = TrieHash::default();
+        root_hash.clone_from_slice(state_hash);
+        if let Some(address) = get_system_address(VALIDATORS_ELECT_CONTRACT_INDEX) {
+            let account = StateStorage::load_account(&address, root_hash)?;
+            if let Some(mut account) = account {
+                if let Some(data) = account.get_contract_metadata(VALIDATORS_KEY.as_bytes())? {
+                    let validators = ProtocolParser::deserialize::<ValidatorSet>(data.as_slice())?;
+                    return Ok(Some(validators));
+                }
+            }
+        }
+        Ok(None)
     }
 
     pub fn initialize_new_header(
