@@ -28,7 +28,7 @@ use utils::{
     parse::ProtocolParser,
 };
 
-use vm::{EvmExecutor, PostState};
+use vm::{Executor, PostState, post_state::Receipt};
 pub struct BlockExecutor {}
 
 impl BlockExecutor {
@@ -49,7 +49,7 @@ impl BlockExecutor {
         let state = CacheState::new(last_state_root_hash);
 
         // initialize contract vm
-        let mut vm = match EvmExecutor::new(header, state.clone()) {
+        let mut vm = match Executor::new(header, state.clone()) {
             Ok(vm) => vm,
             Err(e) => {
                 return Err(BlockExecutionError::VmError {
@@ -69,6 +69,18 @@ impl BlockExecutor {
                     let error = BlockExecutionError::TransactionParamError {
                         error: e.to_string(),
                     };
+                    post_state.add_receipt(block.get_header().get_height(), 
+                        Receipt{
+                            index,
+                            success: false,
+                            logs: vec![],
+                            gas_used: 10000,
+                            contract_address: None,
+                            output: None,
+                            description: Some(e.to_string()),
+                        }
+                    );
+                    tx_array.push(SignedTransaction::default());
                     continue;
                 }
             };
@@ -682,7 +694,7 @@ impl BlockExecutor {
         let state = CacheState::new(root_hash);
 
         // initialize contract vm
-        let mut vm = match EvmExecutor::new(&header, state.clone()) {
+        let mut vm = match Executor::new(&header, state.clone()) {
             Ok(vm) => vm,
             Err(e) => {
                 return Err(());
