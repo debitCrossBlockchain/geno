@@ -25,15 +25,15 @@ pub struct EvmVM {
 }
 
 impl EvmVM {
-    pub fn new(cache_state: CacheState) -> std::result::Result<Self, VmError> {
+    pub(crate) fn new(cache_state: CacheState) -> Self {
         let vm_state = VmState::new(State::new(cache_state.clone()));
         let mut evm = EVM::new();
         evm.database(vm_state);
 
-        Ok(EvmVM { evm })
+        EvmVM { evm }
     }
 
-    pub fn execute(
+    pub(crate) fn execute(
         &mut self,
         index: usize,
         transaction: &SignedTransaction,
@@ -270,7 +270,7 @@ impl EvmVM {
         }
 
         self.evm.env.tx.value = U256::from(tx_raw.value());
-        self.evm.env.tx.data = Bytes::from(tx_raw.input().to_vec());
+        self.evm.env.tx.data = Bytes::from(tx_raw.payload().to_vec());
 
         let chain_id = match u64::from_str_radix(tx_raw.chain_id(), 10) {
             Ok(value) => value,
@@ -291,7 +291,7 @@ impl EvmVM {
         Ok(())
     }
 
-    fn fill_block_env(&mut self, header: &LedgerHeader) -> std::result::Result<(), VmError> {
+    pub(crate) fn fill_block_env(&mut self, header: &LedgerHeader) -> std::result::Result<(), VmError> {
         self.evm.env.block.number = U256::from(header.get_height());
         self.evm.env.block.coinbase = AddressConverter::to_evm_address(header.get_proposer())?;
         self.evm.env.block.timestamp = U256::from(header.get_timestamp());
@@ -303,7 +303,7 @@ impl EvmVM {
         Ok(())
     }
 
-    fn fill_cfg_env(&mut self, header: &LedgerHeader) -> std::result::Result<(), VmError> {
+    pub(crate) fn fill_cfg_env(&mut self, header: &LedgerHeader) -> std::result::Result<(), VmError> {
         let chain_id = match u64::from_str_radix(header.get_chain_id(), 10) {
             Ok(value) => value,
             Err(e) => {
@@ -321,5 +321,25 @@ impl EvmVM {
         self.evm.env.cfg.perf_all_precompiles_have_balance = false;
         self.evm.env.cfg.perf_analyse_created_bytecodes = AnalysisKind::Analyse;
         Ok(())
+    }
+
+    pub fn call(
+        &mut self,
+        transaction: &SignedTransaction,
+    ) -> std::result::Result<ResultAndState, VmError> {
+        self.fill_tx_env(&transaction)?;
+
+        // main execution.
+        let out = self.evm.transact();
+        let ret_and_state = match out {
+            Ok(ret_and_state) => ret_and_state,
+            Err(e) => {
+                return Err(VmError::VMExecuteError {
+                    hash: transaction.hash_hex(),
+                    message: format!("{:?}", e),
+                });
+            }
+        };
+        Ok(ret_and_state)
     }
 }
