@@ -271,13 +271,18 @@ pub async fn process_publish_event(
     while let Some(event) = event_receiver.recv().await {
         let (ledger, tx_result_arr) = event;
 
-        let header = ledger.get_header().clone();
+        let mut header = ledger.get_header().clone();
+        header.clear_extended_data();
         connections.publish_event(PublishEvent::Headers(header));
 
         for (index, tx) in ledger.get_transaction_signs().iter().enumerate() {
             if let Some(result) = tx_result_arr.get(index) {
                 let mut store = TransactionSignStore::default();
                 store.set_transaction_sign(tx.clone());
+                store
+                    .mut_transaction_sign()
+                    .mut_transaction()
+                    .clear_reserves();
                 store.set_transaction_result(result.clone());
                 connections.publish_event(PublishEvent::Transactions(store));
 
