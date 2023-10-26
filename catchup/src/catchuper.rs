@@ -1,7 +1,7 @@
 
 
 use crate::network::CatchupNetworkInterace;
-use crate::notification::{TimerNotificationReceiver, BroadcastSender};
+use crate::notification::{TimerNotificationReceiver, BroadcastSender, ChainStatusReceiver, BlocksReceiver};
 use crate::storage_executor::StorageExecutorInterface;
 use crate::catchup_status::{CatchupStatus, Peers};
 
@@ -18,7 +18,7 @@ use utils::{
 use network::{Endpoint, LocalBusSubscriber, ReturnableProtocolsMessage};
 use types::SignedTransaction;
 
-use crossbeam_channel::{RecvError, select, bounded};
+use crossbeam_channel::{RecvError, select, bounded, unbounded};
 use protobuf::{RepeatedField, Message}; 
 use tracing::error;
 
@@ -29,7 +29,9 @@ pub struct Catchuper<S, N>{
     executor: S,
     network: N,
     timer_notify: TimerNotificationReceiver, 
-    txns_nofity: BroadcastSender,
+    txns_notify: BroadcastSender,
+    status_notify:ChainStatusReceiver,
+    blocks_notify:BlocksReceiver,
 }
 
 impl<S, N> Catchuper <S, N> 
@@ -40,7 +42,7 @@ impl<S, N> Catchuper <S, N>
     pub fn create_and_start(
         network: N, 
         executor: S, 
-        txns_nofity: BroadcastSender,
+        txns_notify: BroadcastSender,
     ){
 
         let (sender, timer_notify) = bounded(1024);
@@ -50,7 +52,9 @@ impl<S, N> Catchuper <S, N>
             TimerEventType::LedgerSync,
             None,
         );
-        let mut catchup = Catchuper::new(network, executor, timer_notify, txns_nofity);
+        let (ChainStatusSender, ChainStatusReceiver) = unbounded();
+        let (BlocksSender, BlocksReceiver) = unbounded();
+        let mut catchup = Catchuper::new(network, executor, timer_notify, txns_notify, ChainStatusReceiver, BlocksReceiver);
         
         //get last blockheader
         let subscriber = catchup.network.add_subscribers(
@@ -58,6 +62,9 @@ impl<S, N> Catchuper <S, N>
               ProtocolsMessageType::SYNCBLOCK,
               ProtocolsMessageType::TRANSACTION,
             ]);
+
+        catchup.network.register_sync_handler(ProtocolsMessageType::SYNCCHAIN, ChainStatusSender);
+        catchup.network.register_sync_handler(ProtocolsMessageType::SYNCBLOCK, BlocksSender);
 
         let _ = std::thread::spawn(move || loop {
             catchup.start(subscriber.clone());
@@ -69,7 +76,10 @@ impl<S, N> Catchuper <S, N>
         network: N, 
         executor: S, 
         timer_notify: TimerNotificationReceiver,
-        txns_nofity: BroadcastSender,) -> Self{
+        txns_notify: BroadcastSender,
+        status_notify: ChainStatusReceiver,
+        blocks_notify: BlocksReceiver
+    ) -> Self{
         
         Self{
             status:CatchupStatus::default(),
@@ -77,7 +87,9 @@ impl<S, N> Catchuper <S, N>
             executor,
             network,
             timer_notify,
-            txns_nofity,
+            txns_notify,
+            status_notify,
+            blocks_notify,
         }
     }
  
@@ -85,6 +97,12 @@ impl<S, N> Catchuper <S, N>
         select! {
             recv(subscriber.inbox) -> msg =>{
                 self.handle_catchup_notification(msg)
+            }
+            recv(self.status_notify) -> msg =>{
+                self.handle_catchup_notification_response(msg)
+            }
+            recv(self.blocks_notify) -> msg =>{
+                self.handle_catchup_blocks(msg)
             }
             recv(self.timer_notify) -> msg =>{
                 self.handle_timer(msg)
@@ -108,18 +126,6 @@ impl<S, N> Catchuper <S, N>
                         }
                     }
 
-                    ProtocolsMessageType::SYNCBLOCK => {
-                        match proto_message.get_action() {
-                            ProtocolsActionMessageType::REQUEST => {
-                                self.handle_catchup_block_reqest(peer_endpoint, &proto_message);
-                            },
-                            ProtocolsActionMessageType::RESPONSE => {
-                                self.handle_catchup_block_response(peer_endpoint, &proto_message);
-                            },
-                            _=>(),
-                        }
-                    }
-
                     ProtocolsMessageType::TRANSACTION => {
                         match proto_message.get_action() {
                             ProtocolsActionMessageType::BROADCAST => {
@@ -134,6 +140,42 @@ impl<S, N> Catchuper <S, N>
             }
             Err(e)=>{
                 error!("catchup receive error: {}",e);
+            }
+        }
+    }
+
+    fn handle_catchup_notification_response(&mut self, msg: Result<(Endpoint, ProtocolsMessage), RecvError>){
+        match msg {
+            Ok((peer_endpoint,proto_message))=>{
+                match proto_message.get_action() {
+                    ProtocolsActionMessageType::RESPONSE => {
+                        self.handle_catchup_block_response(peer_endpoint, &proto_message);
+                    },
+                    _=>(),
+                }
+            }
+            Err(e)=>{
+                error!("catchup status response error: {}",e);
+            }
+        }
+    }
+
+    fn handle_catchup_blocks(&mut self, msg: Result<(Endpoint, ProtocolsMessage), RecvError>){
+        match msg {
+            Ok((peer_endpoint,proto_message))=>{
+
+                match proto_message.get_action() {
+                    ProtocolsActionMessageType::REQUEST => {
+                        self.handle_catchup_block_reqest(peer_endpoint, &proto_message);
+                    },
+                    ProtocolsActionMessageType::RESPONSE => {
+                        self.handle_catchup_block_response(peer_endpoint, &proto_message);
+                    },
+                    _=>(),
+                }
+            }
+            Err(e)=>{
+                error!("catchup blocks receive error: {}",e);
             }
         }
     }
@@ -411,7 +453,7 @@ impl<S, N> Catchuper <S, N>
             })
             .collect::<Vec<_>>();
 
-        if let Err(e) = self.txns_nofity.unbounded_send(txns) {
+        if let Err(e) = self.txns_notify.unbounded_send(txns) {
             error!("broadcast transaction send to tx-pool error({:?})", e);
         }
 

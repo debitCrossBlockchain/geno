@@ -32,7 +32,10 @@ pub enum TxpoolNotification{
 
 pub type  ClientNotificationReceiver = Receiver<ClientNotification>;
 //pub type CatchupNotificationReceiver = Receiver<CatchupNotification>; //
-pub type CatchupNotificationReceiver = Receiver<(Endpoint, ProtocolsMessage)>; 
+pub type ChainStatusReceiver = Receiver<(Endpoint, ProtocolsMessage)>; 
+pub type ChainStatusSender = Sender<(Endpoint, ProtocolsMessage)>; 
+pub type BlocksReceiver = Receiver<(Endpoint, ProtocolsMessage)>; 
+pub type BlocksSender = Sender<(Endpoint, ProtocolsMessage)>; 
 //pub type TimerNotificationReceiver = Receiver<TimerNotification>;
 pub type TimerNotificationReceiver = Receiver<TimterEventParam>;
 pub type TxpoolNotificationSender = Sender<TxpoolNotification>;

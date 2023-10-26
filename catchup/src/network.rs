@@ -3,16 +3,18 @@ use std::collections::HashSet;
 use anyhow::{Ok, bail};
 use network::{Endpoint, PeerNetwork, LocalBusSubscriber, ReturnableProtocolsMessage};
 use protos::common::{ProtocolsMessage, ProtocolsMessageType};
-
-
-
-
+use crossbeam_channel::Sender;
 
 pub trait CatchupNetworkInterace{
     fn add_subscribers(&self, topics: &[ProtocolsMessageType])->LocalBusSubscriber<ProtocolsMessageType, ReturnableProtocolsMessage>;
     fn select_peers(&self)->Option<HashSet<Endpoint>>;
     fn send_msg(&self, id:Endpoint, msg:ProtocolsMessage)->anyhow::Result<()>;
     fn broadcast_msg(&self, msg: ProtocolsMessage)->anyhow::Result<()>;
+    fn register_sync_handler(
+        &self,
+        msg_type: ProtocolsMessageType,
+        sender: Sender<(Endpoint, ProtocolsMessage)>,
+    );
 } 
 
 pub struct CatchupNetwork{
@@ -39,6 +41,10 @@ impl CatchupNetwork{
     fn add_subscribers(&self, topics: &[ProtocolsMessageType])->LocalBusSubscriber<ProtocolsMessageType, ReturnableProtocolsMessage>{
         self.inner.add_subscribers(topics)
     } 
+
+    fn register_sync_handler(&self,msg_type: ProtocolsMessageType, sender: Sender<(Endpoint, ProtocolsMessage)>){
+        self.inner.register_rpc_handler(msg_type, sender);
+    }
 }
 
 impl CatchupNetworkInterace for CatchupNetwork{
@@ -66,5 +72,12 @@ impl CatchupNetworkInterace for CatchupNetwork{
     }
     fn add_subscribers(&self, topics: &[ProtocolsMessageType])->LocalBusSubscriber<ProtocolsMessageType, ReturnableProtocolsMessage>{
         self.add_subscribers(topics)
+    }
+    fn register_sync_handler(
+            &self,
+            msg_type: ProtocolsMessageType,
+            sender: Sender<(Endpoint, ProtocolsMessage)>,
+        ) {
+        self.register_sync_handler(msg_type, sender);    
     }
 }
