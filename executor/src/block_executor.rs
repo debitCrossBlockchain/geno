@@ -28,7 +28,7 @@ use utils::{
     parse::ProtocolParser,
 };
 
-use vm::{Executor, PostState, post_state::Receipt};
+use vm::{post_state::Receipt, Executor, PostState};
 pub struct BlockExecutor {}
 
 impl BlockExecutor {
@@ -69,8 +69,9 @@ impl BlockExecutor {
                     let error = BlockExecutionError::TransactionParamError {
                         error: e.to_string(),
                     };
-                    post_state.add_receipt(block.get_header().get_height(), 
-                        Receipt{
+                    post_state.add_receipt(
+                        block.get_header().get_height(),
+                        Receipt {
                             index,
                             success: false,
                             logs: vec![],
@@ -78,7 +79,7 @@ impl BlockExecutor {
                             contract_address: None,
                             output: None,
                             description: Some(e.to_string()),
-                        }
+                        },
                     );
                     tx_array.push(SignedTransaction::default());
                     continue;
@@ -426,10 +427,9 @@ impl BlockExecutor {
         Ok(())
     }
 
-    pub fn verify_block(&self, block: &Ledger) -> anyhow::Result<Vec<bool>> {
+    pub fn verify_block(&self, block: &Ledger) -> anyhow::Result<()> {
         //verify header (todo)
         let header = block.get_header();
-
         if let Ok(Some(h)) = LedgerStorage::load_max_block_height() {
             if h + 1 != header.get_height() {
                 bail!("verify block error!")
@@ -440,7 +440,7 @@ impl BlockExecutor {
         if let Ok(Some(pre_header)) =
             LedgerStorage::load_ledger_header_by_seq(header.get_height() - 1)
         {
-            match header.verify_pre_hash(pre_header.get_previous_hash()) {
+            match header.verify_pre_hash(pre_header.get_hash()) {
                 Ok(v) if v == true => (),
                 _ => bail!("verify previous hash error!"),
             };
@@ -461,7 +461,7 @@ impl BlockExecutor {
         if ret.iter().any(|&r| r == false) {
             bail!("verify block error")
         } else {
-            Ok(ret)
+            Ok(())
         }
     }
 
