@@ -1,15 +1,13 @@
 use crate::{account, chain, config, node};
-use clap::{Parser, Subcommand};
 use anyhow::Result;
-
+use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(name = "geno", author, version = "0.1", long_version = "0.0.1", about = "geno cmd", long_about =None)]
-pub struct Cmd{
+pub struct Cmd {
     #[clap(subcommand)]
     command: Commands,
 }
-
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
@@ -23,9 +21,9 @@ pub enum Commands {
     Config(config::Command),
 }
 
-impl Cmd{
-    pub fn run(self)->Result<()>{
-        match self.command{
+impl Cmd {
+    pub fn run(self) -> Result<()> {
+        match self.command {
             Commands::Node(cmd) => cmd.run(),
             Commands::Chain(cmd) => cmd.run(),
             Commands::Account(cmd) => cmd.run(),
@@ -34,25 +32,21 @@ impl Cmd{
     }
 }
 
-
 #[inline]
-pub fn run()->Result<()>{
-    //Cmd::parse().run()
-    match Cmd::try_parse(){
+pub fn run() -> Result<()> {
+    match Cmd::try_parse() {
         Ok(cmd) => cmd.run(),
-        Err(_) => Ok(()),
+        Err(e) => Ok(()),
     }
 }
 
-
 #[cfg(test)]
-mod tests{
+mod tests {
     use super::*;
     use clap::CommandFactory;
 
     #[test]
-    fn test_cmd(){
+    fn test_cmd() {
         todo!()
-
     }
 }

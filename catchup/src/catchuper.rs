@@ -59,7 +59,6 @@ impl<S, N> Catchuper <S, N>
         //get last blockheader
         let subscriber = catchup.network.add_subscribers(
             &[ProtocolsMessageType::SYNCCHAIN, 
-              ProtocolsMessageType::SYNCBLOCK,
               ProtocolsMessageType::TRANSACTION,
             ]);
 
@@ -291,8 +290,6 @@ impl<S, N> Catchuper <S, N>
     }
     
     fn handle_catchup_block_response(&mut self, peer_id: Endpoint, protocol_msg: &ProtocolsMessage) {
-
-        
         let block_rep :SyncBlockResponse = match ProtocolParser::deserialize(protocol_msg.get_data()) {
             Ok(value) => value,
             Err(e) => return,
