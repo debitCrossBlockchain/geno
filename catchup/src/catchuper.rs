@@ -119,9 +119,6 @@ impl<S, N> Catchuper <S, N>
                             ProtocolsActionMessageType::BROADCAST => {
                                 self.handle_catchup_chain_broadcast(peer_endpoint, &proto_message);
                             },
-                            ProtocolsActionMessageType::RESPONSE => {
-                                self.handle_catchup_chain_response(peer_endpoint, &proto_message);
-                            },
                             _=>(),
                         }
                     }
@@ -149,7 +146,7 @@ impl<S, N> Catchuper <S, N>
             Ok((peer_endpoint,proto_message))=>{
                 match proto_message.get_action() {
                     ProtocolsActionMessageType::RESPONSE => {
-                        self.handle_catchup_block_response(peer_endpoint, &proto_message);
+                        self.handle_catchup_chain_response(peer_endpoint, &proto_message);
                     },
                     _=>(),
                 }
