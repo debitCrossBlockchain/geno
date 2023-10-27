@@ -216,6 +216,7 @@ impl<S, N> Catchuper <S, N>
         let mut req: SyncBlockRequest = SyncBlockRequest::new();
         req.set_begin(cur_height as i64);
         req.set_end(0);
+        req.set_chain_id(self_chain_id());
         req.set_requestid(0);
 
         let mut message = protos::common::ProtocolsMessage::new();
