@@ -8,7 +8,7 @@ use crate::{
 };
 use network::PeerNetwork;
 use protobuf::{Message, RepeatedField};
-use protos::common::{ProtocolsMessage, ProtocolsMessageType};
+use protos::common::{ProtocolsActionMessageType, ProtocolsMessage, ProtocolsMessageType};
 use std::{cmp::max, collections::HashMap, time::Duration};
 use utils::TransactionSign;
 
@@ -139,6 +139,7 @@ impl Pool {
 
         let mut message = ProtocolsMessage::new();
         message.set_msg_type(ProtocolsMessageType::TRANSACTION);
+        message.set_action(ProtocolsActionMessageType::BROADCAST);
         message.set_data(broadcast.write_to_bytes().unwrap());
         message.set_timestamp(chrono::Local::now().timestamp_millis());
         if let Some(ref network) = self.network {

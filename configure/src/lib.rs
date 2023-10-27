@@ -4,8 +4,6 @@ extern crate serde;
 extern crate serde_derive;
 #[macro_use]
 extern crate config;
-#[macro_use]
-extern crate lazy_static;
 
 mod configure;
 mod consensus;
@@ -22,17 +20,32 @@ pub use consensus::Consensus;
 pub use db::Db;
 pub use genesis_block::GenesisBlock;
 pub use jsonrpc::JsonRpcConfig;
+use once_cell::sync::Lazy;
 pub use p2p_network::P2PNetwork;
+use parking_lot::RwLock;
 pub use ssl::SSL;
 pub use tx_pool::TxPoolConfig;
 
-use std::sync::Arc;
-lazy_static! {
-    pub static ref CONFIGURE_INSTANCE_REF: Arc<Configure> = Arc::new({
-        let mut conf = Config::default();
-        conf.merge(File::new("setting/config", FileFormat::Toml))
-            .unwrap();
-        let mut config: Configure = conf.try_into().unwrap();
-        config
-    });
+pub static CONFIG_FILE_PATH: Lazy<RwLock<String>> =
+    Lazy::new(|| RwLock::new("./setting/config.toml".to_string()));
+
+pub fn parse_config(file_path: &str) -> Configure {
+    let mut conf = Config::default();
+    let file = File::new(file_path, FileFormat::Toml);
+    match conf.merge(file) {
+        Ok(_) => {}
+        Err(e) => {
+            panic!("config error:{:?}", e);
+        }
+    }
+    let config: Configure = match conf.try_into() {
+        Ok(config) => config,
+        Err(e) => {
+            panic!("config error:{:?}", e);
+        }
+    };
+    config
 }
+
+pub static CONFIGURE_INSTANCE_REF: Lazy<Configure> =
+    Lazy::new(|| parse_config(CONFIG_FILE_PATH.read().as_str()));
