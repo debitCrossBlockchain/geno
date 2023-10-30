@@ -9,6 +9,17 @@
             "program": "${workspaceRoot}/target/debug/geno",
             "args": [],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "geno-win",
+            "type": "cppvsdbg",
+            "preLaunchTask": "rust: cargo build",
+            "request": "launch",
+            "program": "${workspaceRoot}/target/debug/geno.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
         }
     ]
 }
