@@ -3,13 +3,14 @@ use protos::{common::ValidatorSet, consensus::BftProof, ledger::Account};
 use state::{AccountFrame, TrieHash, TrieReader};
 use storage_db::{MemWriteBatch, WriteBatchTrait, STORAGE_INSTANCE_REF};
 use utils::{
-    general::{compose_prefix_bytes, compose_prefix_str, hash_crypto_byte},
+    general::{compose_prefix_bytes, compose_prefix_str, compose_prefix_u64, hash_crypto_byte},
     parse::ProtocolParser,
 };
 
 pub const CODE_HASH_PREFIX: &str = "codehash";
 pub const VALIDATORS_PREFIX: &str = "vs";
 pub const LAST_PROOF: &str = "last_proof";
+pub const PROOF_PREFIX: &str = "proof";
 pub struct StateStorage;
 
 impl StateStorage {
@@ -67,11 +68,28 @@ impl StateStorage {
         );
     }
 
+    pub fn store_proof(batch: &mut MemWriteBatch, height: u64, proof: &BftProof) {
+        let key = compose_prefix_u64(PROOF_PREFIX, height);
+        batch.set(key, ProtocolParser::serialize::<BftProof>(proof));
+    }
+
     pub fn load_last_proof() -> anyhow::Result<Option<BftProof>> {
         let result = STORAGE_INSTANCE_REF
             .account_db()
             .lock()
             .get(LAST_PROOF.as_bytes())?;
+
+        if let Some(value) = result {
+            let proof = ProtocolParser::deserialize::<BftProof>(&value)?;
+            Ok(Some(proof))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn load_proof(height: u64) -> anyhow::Result<Option<BftProof>> {
+        let key = compose_prefix_u64(PROOF_PREFIX, height);
+        let result = STORAGE_INSTANCE_REF.account_db().lock().get(&key)?;
 
         if let Some(value) = result {
             let proof = ProtocolParser::deserialize::<BftProof>(&value)?;

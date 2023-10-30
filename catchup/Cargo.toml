@@ -11,12 +11,14 @@ crate-type = ["lib"]
 
 utils = { path = "../utils", version = "0.1.0" }
 state = { path = "../state", version = "0.1.0" }
+msp = { path = "../msp", version = "0.1.0" }
 vm = { path = "../vm", version = "0.1.0" }
 types = { path = "../types", version = "0.1.0" }
 protos = { path = "../protos", version = "0.1.0" }
 network = { path = "../network", version = "0.1.0" }
 executor = { path = "../executor", version = "0.1.0" }
 ledger-store = { path = "../storage/ledger-store", version = "0.1.0" }
+state-store = { path = "../storage/state-store", version = "0.1.0" }
 
 crossbeam-channel = "0.5.6"
 fxhash = "0.2"

@@ -171,6 +171,7 @@ impl BlockExecutor {
         let proof = if let Some(proof_data) = Self::extract_proof(block) {
             let proof = ProtocolParser::deserialize::<BftProof>(&proof_data)?;
             StateStorage::store_last_proof(&mut state_batch, &proof);
+            StateStorage::store_proof(&mut state_batch, header.get_height(), &proof);
             Some(proof)
         } else {
             None
@@ -183,7 +184,7 @@ impl BlockExecutor {
         // caculate txs hash
         let mut txs_leafs: Vec<Vec<u8>> = Vec::new();
         let mut receips_leafs: Vec<Vec<u8>> = Vec::new();
-        let mut txs_store = HashMap::with_capacity(block.get_transaction_signs().len());
+        let mut txs_store = Vec::with_capacity(block.get_transaction_signs().len());
         for (i, t) in txs.iter().enumerate() {
             let mut tx_store = TransactionSignStore::default();
             let tx_hash = t.hash().to_vec();
@@ -205,7 +206,7 @@ impl BlockExecutor {
 
             tx_store.set_transaction_sign(tx_sign);
             tx_store.set_transaction_result(tx_result);
-            txs_store.insert(tx_hash.clone(), tx_store);
+            txs_store.push((tx_hash.clone(), tx_store));
             txs_leafs.push(tx_hash.clone());
 
             let receips_hash = hash_crypto_byte(&ProtocolParser::serialize::<TransactionResult>(
@@ -322,7 +323,15 @@ impl BlockExecutor {
         result: &BlockResult,
     ) -> anyhow::Result<()> {
         let header = block.get_header().clone();
-        let mut verify_header = header.clone();
+        let mut verify_header = Self::initialize_new_header(
+            header.get_height(),
+            header.get_previous_hash().to_vec(),
+            header.get_timestamp(),
+            header.get_version(),
+            header.get_tx_count(),
+            header.get_total_tx_count(),
+            header.get_proposer().to_string(),
+        );
 
         let last_state_root_hash = if header.get_height() == utils::general::GENESIS_HEIGHT {
             None
@@ -372,6 +381,7 @@ impl BlockExecutor {
         let proof = if let Some(proof_data) = Self::extract_proof(block) {
             let proof = ProtocolParser::deserialize::<BftProof>(&proof_data)?;
             StateStorage::store_last_proof(&mut state_batch, &proof);
+            StateStorage::store_proof(&mut state_batch, header.get_height(), &proof);
             Some(proof)
         } else {
             None
@@ -384,7 +394,7 @@ impl BlockExecutor {
         // caculate txs hash
         let mut txs_leafs: Vec<Vec<u8>> = Vec::new();
         let mut receips_leafs: Vec<Vec<u8>> = Vec::new();
-        let mut txs_store = HashMap::with_capacity(block.get_transaction_signs().len());
+        let mut txs_store = Vec::with_capacity(block.get_transaction_signs().len());
         for (i, t) in txs.iter().enumerate() {
             let mut tx_store = TransactionSignStore::default();
             let tx_hash = t.hash().to_vec();
@@ -405,7 +415,7 @@ impl BlockExecutor {
 
             tx_store.set_transaction_sign(tx_sign);
             tx_store.set_transaction_result(tx_result);
-            txs_store.insert(tx_hash.clone(), tx_store);
+            txs_store.push((tx_hash.clone(), tx_store));
             txs_leafs.push(tx_hash.clone());
 
             let receips_hash = hash_crypto_byte(&ProtocolParser::serialize::<TransactionResult>(
@@ -447,14 +457,8 @@ impl BlockExecutor {
 
         // set ledger hash
         verify_header.set_hash(hash_crypto_byte(
-            &ProtocolParser::serialize::<LedgerHeader>(&header),
+            &ProtocolParser::serialize::<LedgerHeader>(&verify_header),
         ));
-
-        // verify ledger hash
-        match header.verify_block_hash(verify_header.get_hash()) {
-            Ok(v) if v == true => (),
-            _ => bail!("verify ledger hash error"),
-        };
 
         info!(
             "commit block height({}) hash({}) previous_hash({}) state_hash({}) transactions_hash({}) receips_hash({}) timestamp({}) version({}) tx_count({}) total_tx_count({}) consensus_value_hash({})",
@@ -468,8 +472,28 @@ impl BlockExecutor {
             header.get_version(),
             header.get_tx_count(),
             header.get_total_tx_count(),
+            bytes_to_hex_str(&Self::extract_consensus_value_hash(&header).unwrap()),
+        );
+
+        info!(
+            "commit block height({}) hash({}) previous_hash({}) state_hash({}) transactions_hash({}) receips_hash({}) timestamp({}) version({}) tx_count({}) total_tx_count({}) consensus_value_hash({})",
+            verify_header.get_height(),
+            bytes_to_hex_str(verify_header.get_hash()),
+            bytes_to_hex_str(verify_header.get_previous_hash()),
+            bytes_to_hex_str(verify_header.get_state_hash()),
+            bytes_to_hex_str(verify_header.get_transactions_hash()),
+            bytes_to_hex_str(verify_header.get_receips_hash()),
+            verify_header.get_timestamp(),
+            verify_header.get_version(),
+            verify_header.get_tx_count(),
+            verify_header.get_total_tx_count(),
             bytes_to_hex_str(&consensus_hash),
         );
+        // verify ledger hash
+        match header.verify_block_hash(verify_header.get_hash()) {
+            Ok(v) if v == true => (),
+            _ => bail!("verify ledger hash error"),
+        };
 
         let mut ledger_batch = MemWriteBatch::new();
         LedgerStorage::store_ledger(&mut ledger_batch, &header, &mut txs_store);
@@ -478,7 +502,6 @@ impl BlockExecutor {
         LAST_COMMITTED_BLOCK_INFO_REF
             .write()
             .update(&header, &result.validator_set, proof);
-        block.set_header(header);
 
         Ok(())
     }
@@ -486,23 +509,15 @@ impl BlockExecutor {
     pub fn verify_block(&self, block: &Ledger) -> anyhow::Result<()> {
         //verify header (todo)
         let header = block.get_header();
-        if let Ok(Some(h)) = LedgerStorage::load_max_block_height() {
-            if h + 1 != header.get_height() {
-                bail!("verify block error!")
-            }
-        } else {
+        let last_header = { LAST_COMMITTED_BLOCK_INFO_REF.read().get_header().clone() };
+
+        if header.get_height() != last_header.get_height() + 1 {
             bail!("verify block error!!")
         };
-        if let Ok(Some(pre_header)) =
-            LedgerStorage::load_ledger_header_by_seq(header.get_height() - 1)
-        {
-            match header.verify_pre_hash(pre_header.get_hash()) {
-                Ok(v) if v == true => (),
-                _ => bail!("verify previous hash error!"),
-            };
-        } else {
-            bail!("verify previous hash error!!")
-        }
+        match header.verify_pre_hash(last_header.get_hash()) {
+            Ok(v) if v == true => (),
+            _ => bail!("verify previous hash error!"),
+        };
 
         //verify transaction
         let ret: Vec<bool> = block
@@ -710,6 +725,7 @@ impl BlockExecutor {
 
     pub fn caculate_consensus_value_hash(block: &Ledger) -> Vec<u8> {
         let mut ledger = Ledger::default();
+        let height = block.get_header().get_height();
         let header = Self::initialize_new_header(
             block.get_header().get_height(),
             block.get_header().get_previous_hash().to_vec(),
@@ -722,10 +738,20 @@ impl BlockExecutor {
 
         ledger.set_header(header);
         if let Some(previous_proof) = Self::extract_previous_proof(block) {
+            info!(
+                "caculate_consensus_value_hash h:{} previous_proof {}",
+                height,
+                bytes_to_hex_str(&previous_proof)
+            );
             Self::inject_previous_proof(&mut ledger, previous_proof.clone());
         }
 
         if let Some(tx_hash_list) = Self::extract_tx_hash_list(block) {
+            info!(
+                "caculate_consensus_value_hash h:{} tx_list {}",
+                height,
+                bytes_to_hex_str(&tx_hash_list)
+            );
             Self::inject_tx_hash_list(&mut ledger, tx_hash_list.clone());
         }
 

@@ -315,24 +315,30 @@ where
         };
 
         let blocks = block_rep.get_blocks();
-
-        if blocks[0].get_header().get_height() == last_h + 1 {
-            blocks.iter().for_each(|block| {
+        for (i, block) in blocks.iter().enumerate() {
+            if last_h + 1 + i as u64 == block.get_header().get_height() {
+                info!("execute verify block {}", block.get_header().get_height());
                 let _ = self.execute_verify_block(block.to_owned());
-            });
-        } else {
-            if blocks[0].get_header().get_height() <= last_h + 1 {
-                if blocks[blocks.len() - 1].get_header().get_height() >= last_h + 1 {
-                    let (n, _): (Vec<_>, Vec<_>) = blocks
-                        .iter()
-                        .partition(|&block| block.get_header().get_height() >= last_h + 1);
-
-                    n.iter().for_each(|&block| {
-                        let _ = self.execute_verify_block(block.to_owned());
-                    });
-                }
             }
         }
+
+        // if blocks[0].get_header().get_height() == last_h + 1 {
+        //     blocks.iter().for_each(|block| {
+        //         let _ = self.execute_verify_block(block.to_owned());
+        //     });
+        // } else {
+        //     if blocks[0].get_header().get_height() <= last_h + 1 {
+        //         if blocks[blocks.len() - 1].get_header().get_height() >= last_h + 1 {
+        //             let (n, _): (Vec<_>, Vec<_>) = blocks
+        //                 .iter()
+        //                 .partition(|&block| block.get_header().get_height() >= last_h + 1);
+
+        //             n.iter().for_each(|&block| {
+        //                 let _ = self.execute_verify_block(block.to_owned());
+        //             });
+        //         }
+        //     }
+        // }
 
         if !block_rep.get_finish() {
             self.catchup_block(Some(peer_id));

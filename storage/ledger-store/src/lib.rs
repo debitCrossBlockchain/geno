@@ -111,7 +111,7 @@ impl LedgerStorage {
     pub fn store_ledger_tx_list(
         batch: &mut MemWriteBatch,
         header: &LedgerHeader,
-        txs: &HashMap<Vec<u8>, TransactionSignStore>,
+        txs: &Vec<(Vec<u8>, TransactionSignStore)>,
     ) {
         let mut tx_hash_list = EntryList::new();
         for (tx_hash, tx) in txs.iter() {
@@ -123,10 +123,7 @@ impl LedgerStorage {
         );
     }
 
-    pub fn store_ledger_tx(
-        batch: &mut MemWriteBatch,
-        txs: &HashMap<Vec<u8>, TransactionSignStore>,
-    ) {
+    pub fn store_ledger_tx(batch: &mut MemWriteBatch, txs: &Vec<(Vec<u8>, TransactionSignStore)>) {
         for (tx_hash, tx) in txs.iter() {
             let key = compose_prefix_str(TRANSACTION_PREFIX, &hex::encode(tx_hash));
             batch.set(key, ProtocolParser::serialize::<TransactionSignStore>(tx));
@@ -136,7 +133,7 @@ impl LedgerStorage {
     pub fn store_ledger(
         batch: &mut MemWriteBatch,
         header: &LedgerHeader,
-        txs: &mut HashMap<Vec<u8>, TransactionSignStore>,
+        txs: &mut Vec<(Vec<u8>, TransactionSignStore)>,
     ) {
         let _ = txs.iter_mut().map(|(_, t)| {
             t.mut_transaction_result()
