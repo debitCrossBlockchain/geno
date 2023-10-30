@@ -317,11 +317,12 @@ impl BlockExecutor {
     }
 
     pub fn commit_verify_block(
-        block: &Ledger,
+        block: &mut Ledger,
         txs: Vec<SignedTransaction>,
         result: &BlockResult,
     ) -> anyhow::Result<()> {
-        let mut header = block.get_header().clone();
+        let header = block.get_header().clone();
+        let mut verify_header = header.clone();
 
         let last_state_root_hash = if header.get_height() == utils::general::GENESIS_HEIGHT {
             None
@@ -362,13 +363,23 @@ impl BlockExecutor {
             &state_datas,
             &mut state_batch,
         )?;
-        StateStorage::commit(state_batch)?;
-
         // verify state hash
         match header.verify_state_hash(&state_root_hash) {
             Ok(v) if v == true => (),
             _ => bail!("verify state hash error"),
         };
+
+        let proof = if let Some(proof_data) = Self::extract_proof(block) {
+            let proof = ProtocolParser::deserialize::<BftProof>(&proof_data)?;
+            StateStorage::store_last_proof(&mut state_batch, &proof);
+            Some(proof)
+        } else {
+            None
+        };
+        StateStorage::commit(state_batch)?;
+
+        // set state hash
+        verify_header.set_state_hash(state_root_hash.to_vec());
 
         // caculate txs hash
         let mut txs_leafs: Vec<Vec<u8>> = Vec::new();
@@ -377,11 +388,26 @@ impl BlockExecutor {
         for (i, t) in txs.iter().enumerate() {
             let mut tx_store = TransactionSignStore::default();
             let tx_hash = t.hash().to_vec();
+            let tx_sign = match block.get_transaction_signs().get(i) {
+                Some(v) => v.clone(),
+                None => {
+                    error!("get tx sign error");
+                    return Err(anyhow::anyhow!("get tx sign error"));
+                }
+            };
+            let tx_result = match result.tx_result_set.get(i) {
+                Some(v) => v.clone(),
+                None => {
+                    error!("get tx result error");
+                    return Err(anyhow::anyhow!("get tx result error"));
+                }
+            };
 
-            tx_store.set_transaction_sign(block.get_transaction_signs().get(i).unwrap().clone());
-            tx_store.set_transaction_result(result.tx_result_set.get(i).unwrap().clone());
+            tx_store.set_transaction_sign(tx_sign);
+            tx_store.set_transaction_result(tx_result);
             txs_store.insert(tx_hash.clone(), tx_store);
             txs_leafs.push(tx_hash.clone());
+
             let receips_hash = hash_crypto_byte(&ProtocolParser::serialize::<TransactionResult>(
                 result.tx_result_set.get(i).unwrap(),
             ));
@@ -392,37 +418,67 @@ impl BlockExecutor {
         if txs_leafs.len() > 0 {
             let mut txs_tree = Tree::new();
             txs_tree.build(txs_leafs.clone());
-            header.set_transactions_hash(txs_tree.root());
+            let hash = txs_tree.root();
+
+            // verify transactions hash
+            match header.verify_transactions_hash(&hash) {
+                Ok(v) if v == true => (),
+                _ => bail!("verify transactions hash error"),
+            };
+            verify_header.set_transactions_hash(hash);
         }
 
         // caculate receips hash
         if receips_leafs.len() > 0 {
             let mut receips_tree = Tree::new();
             receips_tree.build(receips_leafs.clone());
-            header.set_receips_hash(receips_tree.root());
+            let hash = receips_tree.root();
+            // verify receips hash
+            match header.verify_receips_hash(&hash) {
+                Ok(v) if v == true => (),
+                _ => bail!("verify receips hash error"),
+            };
+            verify_header.set_receips_hash(hash);
         }
 
-        // caculate fee hash
+        // set consensus value hash
+        let consensus_hash = Self::caculate_consensus_value_hash(block);
+        Self::inject_consensus_value_hash(&mut verify_header, consensus_hash.clone());
 
-        // verify validators hash
-        let validator_hash = hash_crypto_byte(&ProtocolParser::serialize::<ValidatorSet>(
-            &result.validator_set,
+        // set ledger hash
+        verify_header.set_hash(hash_crypto_byte(
+            &ProtocolParser::serialize::<LedgerHeader>(&header),
         ));
-        match header.verify_validators_hash(&validator_hash) {
+
+        // verify ledger hash
+        match header.verify_block_hash(verify_header.get_hash()) {
             Ok(v) if v == true => (),
-            _ => bail!("verify validators hash error"),
+            _ => bail!("verify ledger hash error"),
         };
 
-        // verify block hash  ???
-        // let block_hash = hash_crypto_byte(&ProtocolParser::serialize::<LedgerHeader>(&header));
-        // match header.verify_block_hash(&block_hash){
-        //     Ok(v) if v == true => (),
-        //     _ => bail!("verify block hash error"),
-        // };
+        info!(
+            "commit block height({}) hash({}) previous_hash({}) state_hash({}) transactions_hash({}) receips_hash({}) timestamp({}) version({}) tx_count({}) total_tx_count({}) consensus_value_hash({})",
+            header.get_height(),
+            bytes_to_hex_str(header.get_hash()),
+            bytes_to_hex_str(header.get_previous_hash()),
+            bytes_to_hex_str(header.get_state_hash()),
+            bytes_to_hex_str(header.get_transactions_hash()),
+            bytes_to_hex_str(header.get_receips_hash()),
+            header.get_timestamp(),
+            header.get_version(),
+            header.get_tx_count(),
+            header.get_total_tx_count(),
+            bytes_to_hex_str(&consensus_hash),
+        );
 
         let mut ledger_batch = MemWriteBatch::new();
         LedgerStorage::store_ledger(&mut ledger_batch, &header, &mut txs_store);
         LedgerStorage::commit(ledger_batch)?;
+
+        LAST_COMMITTED_BLOCK_INFO_REF
+            .write()
+            .update(&header, &result.validator_set, proof);
+        block.set_header(header);
 
         Ok(())
     }
@@ -465,7 +521,7 @@ impl BlockExecutor {
         }
     }
 
-    pub fn execute_verify_block(&self, block: Ledger) -> anyhow::Result<()> {
+    pub fn execute_verify_block(&self, mut block: Ledger) -> anyhow::Result<()> {
         match self.verify_block(&block) {
             Ok(_) => (),
             Err(e) => bail!(e),
@@ -476,7 +532,7 @@ impl BlockExecutor {
             Err(e) => bail!(e),
         };
 
-        BlockExecutor::commit_verify_block(&block, a, &b)
+        BlockExecutor::commit_verify_block(&mut block, a, &b)
     }
 
     pub fn block_initialize() -> anyhow::Result<()> {
