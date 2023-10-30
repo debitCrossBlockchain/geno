@@ -257,7 +257,7 @@ where
 
         let mut block_rep = SyncBlockResponse::new();
         let mut blocks = vec![];
-        for h in begin..=end_rep {
+        for h in (begin + 1)..=end_rep {
             match self.executor.get_block(h) {
                 Ok(Some(v)) => blocks.push(v),
                 Ok(None) => {
