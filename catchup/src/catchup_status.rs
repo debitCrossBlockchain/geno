@@ -31,27 +31,45 @@ impl CatchupState {
     }
 }
 
-pub struct ChainStatus{
+#[derive(Default)]
+pub struct SyncTimeOut{
     pub height: u64,
-    pub hash: Vec<u8>,
-    pub chain_id: ::std::string::String,
+    pub ttl: u64,
+}
+
+impl SyncTimeOut{
+    fn check(&mut self, height: u64) -> bool{
+        if self.height == height{
+            if self.ttl + 1 > 3{
+                self.ttl = 0;
+                return true
+            }else{
+                self.ttl = self.ttl + 1;
+            }
+        }else{
+            self.height = height;
+        }
+
+        return false
+    }
 }
 
 
 pub struct CatchupStatus {
     pub status: LedgerHeader,
     pub state: CatchupState,
+    pub timeout: SyncTimeOut,
 }
 
 impl Default for CatchupStatus{
     fn default() -> Self {
-        Self { status: LedgerHeader::default(), state: CatchupState::Prepare }
+        Self { status: LedgerHeader::default(), state: CatchupState::Prepare, timeout: SyncTimeOut::default()}
     }
 }
 
 impl CatchupStatus{
     pub fn new(status: LedgerHeader) -> Self{
-        Self { status, state: CatchupState::Prepare }
+        Self { status, state: CatchupState::Prepare, timeout: SyncTimeOut{ height: 0, ttl: 0 } }
     }
 
     pub fn catchup_done(&mut self){
@@ -64,6 +82,10 @@ impl CatchupStatus{
 
     pub fn catchup_ing(&mut self, block_id:u64){
         self.state = CatchupState::Catchuphronizing { block_id };
+    }
+
+    pub fn update_status(&mut self, status: LedgerHeader){
+        self.status = status;
     }
 
     pub fn get_height(&self)->u64{
@@ -84,6 +106,10 @@ impl CatchupStatus{
 
     pub fn is_catchuped(&self) -> bool {
         self.state.is_catchuped()
+    }
+
+    pub fn check(&mut self, height: u64) -> bool{
+        self.timeout.check(height)
     }
 }
 

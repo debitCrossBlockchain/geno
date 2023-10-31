@@ -5,6 +5,7 @@ use crate::notification::{
 };
 use crate::storage_executor::StorageExecutorInterface;
 
+use ledger_store::LedgerStorage;
 use network::{Endpoint, LocalBusSubscriber, ReturnableProtocolsMessage};
 use protos::{
     common::{ProtocolsActionMessageType, ProtocolsMessage, ProtocolsMessageType},
@@ -185,6 +186,14 @@ where
                     self.catchup_chain();
                     if !self.status.is_catchuping() {
                         self.catchup_block(None);
+                    }else{
+                        let height = match LedgerStorage::load_max_block_height(){
+                            Ok(Some(h)) => h,
+                            _ => return,
+                        };
+                        if self.status.check(height){
+                            self.status.catchup_done()
+                        }
                     }
                 }
                 _ => {}
@@ -247,12 +256,10 @@ where
         let begin = block_req.get_begin() as u64;
         //let end = block_req.get_end() as u64;
 
-        let end_rep = if last_h >= begin + 5 {
+        let end_rep = if last_h > begin {
             begin + 5
-        } else if last_h < begin {
-            return;
-        } else {
-            last_h
+        }else{
+            begin + 1
         };
 
         let mut block_rep = SyncBlockResponse::new();
