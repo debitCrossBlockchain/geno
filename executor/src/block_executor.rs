@@ -462,21 +462,6 @@ impl BlockExecutor {
 
         info!(
             "commit block height({}) hash({}) previous_hash({}) state_hash({}) transactions_hash({}) receips_hash({}) timestamp({}) version({}) tx_count({}) total_tx_count({}) consensus_value_hash({})",
-            header.get_height(),
-            bytes_to_hex_str(header.get_hash()),
-            bytes_to_hex_str(header.get_previous_hash()),
-            bytes_to_hex_str(header.get_state_hash()),
-            bytes_to_hex_str(header.get_transactions_hash()),
-            bytes_to_hex_str(header.get_receips_hash()),
-            header.get_timestamp(),
-            header.get_version(),
-            header.get_tx_count(),
-            header.get_total_tx_count(),
-            bytes_to_hex_str(&Self::extract_consensus_value_hash(&header).unwrap()),
-        );
-
-        info!(
-            "commit block height({}) hash({}) previous_hash({}) state_hash({}) transactions_hash({}) receips_hash({}) timestamp({}) version({}) tx_count({}) total_tx_count({}) consensus_value_hash({})",
             verify_header.get_height(),
             bytes_to_hex_str(verify_header.get_hash()),
             bytes_to_hex_str(verify_header.get_previous_hash()),
