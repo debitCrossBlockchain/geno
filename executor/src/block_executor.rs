@@ -723,20 +723,20 @@ impl BlockExecutor {
 
         ledger.set_header(header);
         if let Some(previous_proof) = Self::extract_previous_proof(block) {
-            info!(
-                "caculate_consensus_value_hash h:{} previous_proof {}",
-                height,
-                bytes_to_hex_str(&previous_proof)
-            );
+            // info!(
+            //     "caculate_consensus_value_hash h:{} previous_proof {}",
+            //     height,
+            //     bytes_to_hex_str(&previous_proof)
+            // );
             Self::inject_previous_proof(&mut ledger, previous_proof.clone());
         }
 
         if let Some(tx_hash_list) = Self::extract_tx_hash_list(block) {
-            info!(
-                "caculate_consensus_value_hash h:{} tx_list {}",
-                height,
-                bytes_to_hex_str(&tx_hash_list)
-            );
+            // info!(
+            //     "caculate_consensus_value_hash h:{} tx_list {}",
+            //     height,
+            //     bytes_to_hex_str(&tx_hash_list)
+            // );
             Self::inject_tx_hash_list(&mut ledger, tx_hash_list.clone());
         }
 
