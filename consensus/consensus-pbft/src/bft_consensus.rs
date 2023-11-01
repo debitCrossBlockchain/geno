@@ -245,7 +245,7 @@ impl BftConsensus {
             BftStorage::store_view_number(self.view_number());
             // store_validators
             BftStorage::store_validators(height, validators);
-            if height  > 3 {
+            if height > 3 {
                 let _ = BftStorage::delete_validators(height - 3);
             }
             //Delete other incomplete view change instances or other view change instances whose sequence is less than 5.
@@ -762,9 +762,10 @@ impl BftConsensus {
     }
 
     pub fn handle_receive_consensus(&mut self, bft_sign: &BftSign) -> bool {
+        if !self.is_validator() {
+            return true;
+        }
         let bft = bft_sign.get_bft();
-        let sig = bft_sign.get_signature();
-        info!(parent:self.span(),"consensus receive msg {:?}",bft.get_msg_type());
         //Check the message item.
         if !self.state.check_bft_message(&bft_sign) {
             return false;
