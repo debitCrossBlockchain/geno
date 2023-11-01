@@ -299,10 +299,11 @@ where
         let block_rep: SyncBlockResponse =
             match ProtocolParser::deserialize(protocol_msg.get_data()) {
                 Ok(value) => value,
-                Err(e) => return,
+                Err(e) => {
+                    self.status.catchup_done();
+                    return
+                }
             };
-
-        self.status.catchup_ing(0);
 
         if block_rep.get_chain_id() != self_chain_id() {
             self.status.catchup_prepare();
@@ -311,41 +312,26 @@ where
 
         let last_h = match self.executor.get_block_height() {
             Ok(Some(v)) => v,
-            Ok(None) => {
-                self.status.catchup_prepare();
-                return;
-            }
-            Err(e) => {
+            _ => {
                 self.status.catchup_prepare();
                 return;
             }
         };
-
+        self.status.catchup_ing(0);
         let blocks = block_rep.get_blocks();
         for (i, block) in blocks.iter().enumerate() {
             if last_h + 1 + i as u64 == block.get_header().get_height() {
                 info!("execute verify block {}", block.get_header().get_height());
-                let _ = self.execute_verify_block(block.to_owned());
+                match self.execute_verify_block(block.to_owned()){
+                    Ok(_) => (),
+                    Err(_) => {
+                        self.peers.update_score_error(peer_id);
+                        self.status.catchup_done();
+                        return
+                    },
+                };
             }
         }
-
-        // if blocks[0].get_header().get_height() == last_h + 1 {
-        //     blocks.iter().for_each(|block| {
-        //         let _ = self.execute_verify_block(block.to_owned());
-        //     });
-        // } else {
-        //     if blocks[0].get_header().get_height() <= last_h + 1 {
-        //         if blocks[blocks.len() - 1].get_header().get_height() >= last_h + 1 {
-        //             let (n, _): (Vec<_>, Vec<_>) = blocks
-        //                 .iter()
-        //                 .partition(|&block| block.get_header().get_height() >= last_h + 1);
-
-        //             n.iter().for_each(|&block| {
-        //                 let _ = self.execute_verify_block(block.to_owned());
-        //             });
-        //         }
-        //     }
-        // }
 
         if !block_rep.get_finish() {
             self.catchup_block(Some(peer_id));
