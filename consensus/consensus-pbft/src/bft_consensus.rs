@@ -22,7 +22,7 @@ use tx_pool::{
     TX_POOL_INSTANCE_REF,
 };
 use utils::{
-    general::{hash_crypto_byte, LEDGER_VERSION, MILLI_UNITS_PER_SEC},
+    general::{hash_crypto_byte, node_address, LEDGER_VERSION, MILLI_UNITS_PER_SEC},
     parse::ProtocolParser,
     timer_manager::{TimerEventType, TimerManager},
 };
@@ -69,23 +69,29 @@ impl BftConsensus {
             Vec<TransactionResult>,
         )>,
     ) -> Self {
-        if last_seq >= 2 {
-            let validators =
-                BftStorage::load_validators(last_seq).expect("validator load failed {}");
-            let validators = match validators {
-                Some(validators) => validators,
-                None => {
-                    panic!("validator load none");
-                }
-            };
+        if validators_set
+            .get_validators()
+            .iter()
+            .any(|v| v.get_address() == &node_address())
+        {
+            if last_seq >= 2 {
+                let validators =
+                    BftStorage::load_validators(last_seq).expect("validator load failed {}");
+                let validators = match validators {
+                    Some(validators) => validators,
+                    None => {
+                        panic!("validator load none");
+                    }
+                };
 
-            if hash_crypto_byte(&ProtocolParser::serialize::<ValidatorSet>(&validators))
-                != hash_crypto_byte(&ProtocolParser::serialize::<ValidatorSet>(validators_set))
-            {
-                panic!("validator not match");
+                if hash_crypto_byte(&ProtocolParser::serialize::<ValidatorSet>(&validators))
+                    != hash_crypto_byte(&ProtocolParser::serialize::<ValidatorSet>(validators_set))
+                {
+                    panic!("validator not match");
+                }
+            } else {
+                BftStorage::store_validators(last_seq, validators_set);
             }
-        } else {
-            BftStorage::store_validators(last_seq, validators_set);
         }
 
         let view_number = BftStorage::load_view_number().unwrap_or(0);
