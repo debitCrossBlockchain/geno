@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::contract::{ContractContext, ContractParameter, SystemContractTrait};
+use crate::{
+    contract::{ContractContext, ContractParameter, SystemContractTrait},
+    system_address::get_system_address,
+};
 use anyhow::{bail, Ok};
 use protos::common::{ContractEvent, ContractResult, ValidatorSet};
 use serde::{Deserialize, Serialize};
@@ -8,18 +11,11 @@ use utils::parse::ProtocolParser;
 
 const PROPOSAL_RECORDES_KEY: &str = "proposalRecordsKey";
 pub const RECORDK_KEY: &str = "voteRecords_";
+pub const VALIDATORS_KEY: &str = "validators_key";
 const NONCE_KEY: &str = "nonce";
 const ADDRESS_PREFIX: &str = "0x";
 const ADDRESS_LENGTH: usize = 42;
 const PROPOSAL_NAME_LENGTH: usize = 30;
-
-const PROPOSAL_ACTION_ADD: u64 = 0;
-const PROPOSAL_ACTION_DEL: u64 = 1;
-
-const PROPOSAL_STATE_INITIATED: u64 = 1;
-const PROPOSAL_STATE_APPROVED: u64 = 2;
-const PROPOSAL_STATE_REVOKED: u64 = 3;
-const PROPOSAL_STATE_EXPIRED: u64 = 4;
 
 pub struct FeesElect {
     pub context: ContractContext,
@@ -61,20 +57,15 @@ impl SystemContractTrait for FeesElect {
 
 #[derive(Serialize, Deserialize)]
 struct ProposalRequest {
-    name: String,
-    candidate: String,
-    action: u64,
+    proposal_id: String,
     limit: u64,
+    fee_type: u64,
+    price: u64,
 }
 
 #[derive(Serialize, Deserialize)]
 struct VoteRequest {
-    name: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct RevokeRequest {
-    name: String,
+    proposal_id: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -84,12 +75,13 @@ pub struct QueryParams {
 
 #[derive(Serialize, Deserialize)]
 struct Proposal {
-    account_id: String,
+    sponsor: String,
     proposal_id: String,
     fee_type: u64,
     price: u64,
-    vote_count: u64,
-    expire_hight: u64,
+    voter: Vec<String>,
+    limit: u64,
+    state: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -185,9 +177,9 @@ impl FeesElect {
         Ok(validators)
     }
 
-    fn is_validator(&self, address: &str) -> bool {
+    fn is_validator(&self, address: &str) -> anyhow::Result<bool> {
         let validators = self.load_validators()?;
-        return Self::validators_contain(validators, address);
+        return Ok(Self::validators_contain(&validators, address));
     }
 
     fn load_proposal_list(&self) -> anyhow::Result<ProposalSet> {
@@ -226,12 +218,12 @@ impl FeesElect {
             }
         };
 
-        account.upsert_contract_metadata(PROPOSAL_LIST_KEY.as_bytes(), value_bytes.as_slice());
+        account.upsert_contract_metadata(PROPOSAL_RECORDES_KEY.as_bytes(), value_bytes.as_slice());
         self.context.state.upsert(&self_address, account);
         Ok(())
     }
 
-    fn storage(&self, value_bytes: Vec<u8>) -> anyhow::Result<()> {
+    fn storage(&self, key: &[u8], value_bytes: Vec<u8>) -> anyhow::Result<()> {
         let self_address = self.context.base_info.address.clone();
         let account = self.context.state.get(&self_address)?;
         let mut account = match account {
@@ -240,10 +232,25 @@ impl FeesElect {
                 anyhow::bail!("Fees contract not found");
             }
         };
-        
-        account.upsert_contract_metadata(
-            Self::make_proposal_key(proposal.name.as_str()).as_bytes(),
-            value_bytes.as_slice(),
+
+        account.upsert_contract_metadata(key, value_bytes.as_slice());
+        self.context.state.upsert(&self_address, account);
+        Ok(())
+    }
+
+    fn delete_proposal(&self, proposal: Proposal) -> anyhow::Result<()> {
+        let self_address = self.context.base_info.address.clone();
+        let account = self.context.state.get(&self_address)?;
+        let mut account = match account {
+            Some(a) => a,
+            None => {
+                anyhow::bail!("Fees contract not found");
+            }
+        };
+        account.delete_metadata(
+            Self::make_proposal_key(proposal.proposal_id.as_str())
+                .as_bytes()
+                .to_vec(),
         );
         self.context.state.upsert(&self_address, account);
         Ok(())
@@ -251,7 +258,8 @@ impl FeesElect {
 
     fn save_proposal(&self, proposal: Proposal) -> anyhow::Result<()> {
         let value_bytes = bincode::serialize(&proposal)?;
-        self.storage(value_bytes)
+        let proposal_id = Self::make_proposal_key(proposal.proposal_id.as_str());
+        self.storage(proposal_id.as_bytes(), value_bytes)
     }
 
     fn load_proposal(&self, name: &str) -> anyhow::Result<Option<Proposal>> {
@@ -283,28 +291,12 @@ impl FeesElect {
         false
     }
 
-    fn log_validators(&self, result: &mut ContractResult, validators: &ValidatorSet) {
-        let vs: Vec<_> = validators
-            .get_validators()
-            .iter()
-            .map(|x| x.get_address().to_string())
-            .collect();
-
-        let mut event = ContractEvent::default();
-        event.set_address(self.contract_address());
-        event.set_topic(protobuf::RepeatedField::from(vs));
-
-        result.mut_contract_event().push(event);
-    }
-
     fn proposal(&mut self, params: ContractParameter) -> anyhow::Result<ContractResult> {
         let mut result = ContractResult::new();
         let proposal_param: ProposalRequest = serde_json::from_str(params.to_string().as_str())?;
 
-        if !Self::check_address(proposal_param.candidate.as_str())
-            || !Self::check_proposal_name(proposal_param.name.as_str())
-            || (proposal_param.action != PROPOSAL_ACTION_ADD
-                && proposal_param.action != PROPOSAL_ACTION_DEL)
+        if !Self::check_address(self.invoker_address().as_str())
+            || !Self::check_proposal_name(proposal_param.proposal_id.as_str())
         {
             bail!("proposal contact parameter error");
         }
@@ -312,45 +304,34 @@ impl FeesElect {
         // laod validators
         let mut proposal_set = self.load_proposal_list()?;
         let invoker = self.invoker_address();
-        if !self.is_validator(&invoker) {
+        if !self.is_validator(&invoker)? {
             bail!("invoker not be validators");
         }
 
         // proposal name must not in proposal name list
-        if proposal_set.proposals.contains_key(&proposal_param.name) {
+        if proposal_set
+            .proposals
+            .contains_key(&proposal_param.proposal_id)
+        {
             bail!("same proposal already is exist");
-        }
-
-        if proposal_param.action == PROPOSAL_ACTION_ADD {
-            if Self::validators_contain(&validators, &proposal_param.candidate) {
-                bail!("candidate already is validators");
-            }
-        } else if proposal_param.action == PROPOSAL_ACTION_DEL {
-            if !Self::validators_contain(&validators, &proposal_param.candidate) {
-                bail!("candidate not in validators");
-            }
-
-            if validators.get_validators().len() == 1 {
-                bail!("candidate is validators,only one left");
-            }
         }
 
         // save proposal into metadata
         let proposal = Proposal {
-            name: proposal_param.name.clone(),
-            candidate: proposal_param.candidate.clone(),
-            action: proposal_param.action,
             sponsor: self.invoker_address(),
             limit: self.block_height() + proposal_param.limit,
             voter: Vec::new(),
-            state: PROPOSAL_STATE_INITIATED,
+            fee_type: proposal_param.fee_type,
+            price: proposal_param.price,
+            proposal_id: proposal_param.proposal_id.clone(),
+            state: 0,
         };
         self.save_proposal(proposal)?;
 
         //add proposal name into state
         proposal_set
             .proposals
-            .insert(proposal_param.name.clone(), 0);
+            .insert(proposal_param.proposal_id.clone(), 0);
 
         self.save_proposal_list(proposal_set)?;
 
@@ -362,120 +343,43 @@ impl FeesElect {
         let vote_param: VoteRequest = serde_json::from_str(params.to_string().as_str())?;
 
         // laod validators
-        let proposal_set = self.load_proposal_list()?;
+        let mut proposal_set = self.load_proposal_list()?;
         let invoker = self.invoker_address();
-        if !self.is_validator(&invoker) {
+        if !self.is_validator(&invoker)? {
             bail!("invoker not be validators");
         }
 
+        let key = Self::make_proposal_key(&vote_param.proposal_id);
+
         // proposal name must not in proposal name list
-        if !proposal_set.proposals.contains_key(&vote_param.name) {
+        if !proposal_set.proposals.contains_key(&key) {
             bail!("proposal is not exist");
         }
 
-        let proposal = self.load_proposal(&vote_param.name)?;
+        let mut proposal = self.load_proposal(&key)?;
         let mut proposal = match proposal {
             Some(p) => p,
             None => bail!("proposal is not exist"),
         };
 
-        match proposal.state {
-            PROPOSAL_STATE_INITIATED => {
-                if proposal.limit <= self.block_height() {
-                    proposal.state = PROPOSAL_STATE_EXPIRED;
-                    self.save_proposal(proposal)?;
-                } else {
-                    if !proposal.voter.contains(&self.invoker_address()) {
-                        proposal.voter.push(self.invoker_address());
-                        if proposal.voter.len()
-                            >= Self::get_quorum_size(validators.get_validators().len()) + 1
-                        {
-                            if proposal.action == PROPOSAL_ACTION_ADD {
-                                let mut v = protos::common::Validator::new();
-                                v.set_address(proposal.candidate.clone());
-                                validators.mut_validators().push(v);
-                                proposal.state = PROPOSAL_STATE_APPROVED;
-                                self.log_validators(&mut result, &validators);
-                            }
-                            if proposal.action == PROPOSAL_ACTION_DEL {
-                                let vs: Vec<_> = validators
-                                    .get_validators()
-                                    .iter()
-                                    .filter(|&x| x.address != proposal.candidate)
-                                    .collect();
-                                let vs2: Vec<_> = vs.iter().map(|&x| x.clone()).collect();
-                                validators.set_validators(protobuf::RepeatedField::from(vs2));
-                                proposal.state = PROPOSAL_STATE_APPROVED;
-                                self.log_validators(&mut result, &validators);
-                            }
-                        }
-                        self.save_proposal(proposal)?;
-                    } else {
-                        bail!("invoker already vote");
-                    }
-                }
-            }
-            PROPOSAL_STATE_EXPIRED => {
-                bail!("VoteFail EXPIRED");
-            }
-            PROPOSAL_STATE_REVOKED => {
-                bail!("VoteFail REVOKED");
-            }
-            PROPOSAL_STATE_APPROVED => {
-                bail!("VoteFail APPROVED");
-            }
-            _ => {}
+        if proposal.limit <= self.block_height() {
+            proposal_set.proposals.remove(&key);
+            self.save_proposal_list(proposal_set)?;
+            self.delete_proposal(proposal)?;
+            bail!("VoteFail EXPIRED");
         }
 
-        Ok(result)
-    }
-
-    pub fn revoke(&mut self, params: ContractParameter) -> anyhow::Result<ContractResult> {
-        let mut result = ContractResult::new();
-        let revoke_param: VoteRequest = serde_json::from_str(params.to_string().as_str())?;
-
-        // laod validators
-        let validators = self.load_validators()?;
-        let proposal_set = self.load_proposal_list()?;
-        let invoker = self.invoker_address();
-        if !Self::validators_contain(&validators, &invoker) {
-            bail!("invoker not be validators");
-        }
-
-        // proposal name must not in proposal name list
-        if !proposal_set.proposals.contains_key(&revoke_param.name) {
-            bail!("proposal is not exist");
-        }
-
-        let proposal = self.load_proposal(&revoke_param.name)?;
-        let mut proposal = match proposal {
-            Some(p) => p,
-            None => bail!("proposal is not exist"),
-        };
-
-        if proposal.sponsor != self.invoker_address() {
-            bail!("not sponsor revoke");
-        }
-
-        match proposal.state {
-            PROPOSAL_STATE_INITIATED => {
-                if proposal.limit <= self.block_height() {
-                    proposal.state = PROPOSAL_STATE_EXPIRED;
-                } else {
-                    proposal.state = PROPOSAL_STATE_REVOKED;
-                }
+        if !proposal.voter.contains(&self.invoker_address()) {
+            proposal.voter.push(self.invoker_address());
+            let validators = self.load_validators()?;
+            if proposal.voter.len() >= Self::get_quorum_size(validators.get_validators().len()) + 1
+            {
+                proposal.state = 1;
                 self.save_proposal(proposal)?;
+                //save config fee todo
+            } else {
+                bail!("invoker already vote");
             }
-            PROPOSAL_STATE_EXPIRED => {
-                bail!("RevokeFail EXPIRED");
-            }
-            PROPOSAL_STATE_REVOKED => {
-                bail!("RevokeFail REVOKED");
-            }
-            PROPOSAL_STATE_APPROVED => {
-                bail!("RevokeFail APPROVED");
-            }
-            _ => {}
         }
 
         Ok(result)
