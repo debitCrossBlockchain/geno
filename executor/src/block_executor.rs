@@ -85,7 +85,7 @@ impl BlockExecutor {
                     continue;
                 }
             };
-            if is_system_contract(&tx_raw.sender().to_string()) {
+            if is_system_contract(&tx_raw.to().to_string()) {
                 if let Err(e) = vm.sysvm_execute(index, &tx_raw, &mut post_state) {
                     let error = BlockExecutionError::VmError {
                         error: format!("sysvm execute error {e:?}"),
@@ -276,7 +276,7 @@ impl BlockExecutor {
         //create accounts of validators from config
         let mut validator_set = ValidatorSet::new();
         for address in genesis_block.validators.iter() {
-            let account = AccountFrame::new(address.clone(), 0);
+            let account = AccountFrame::new(address.clone(), 50000000);
 
             state.upsert(address, account);
 
@@ -723,20 +723,10 @@ impl BlockExecutor {
 
         ledger.set_header(header);
         if let Some(previous_proof) = Self::extract_previous_proof(block) {
-            // info!(
-            //     "caculate_consensus_value_hash h:{} previous_proof {}",
-            //     height,
-            //     bytes_to_hex_str(&previous_proof)
-            // );
             Self::inject_previous_proof(&mut ledger, previous_proof.clone());
         }
 
         if let Some(tx_hash_list) = Self::extract_tx_hash_list(block) {
-            // info!(
-            //     "caculate_consensus_value_hash h:{} tx_list {}",
-            //     height,
-            //     bytes_to_hex_str(&tx_hash_list)
-            // );
             Self::inject_tx_hash_list(&mut ledger, tx_hash_list.clone());
         }
 
@@ -782,21 +772,24 @@ impl BlockExecutor {
     }
 
     fn filter_new_validators(tx_result_set: &[TransactionResult]) -> ValidatorSet {
-        if let Some(contract_address) = get_system_address(VALIDATORS_ELECT_CONTRACT_INDEX) {
-            for tx_result in tx_result_set {
-                for event in tx_result.get_contract_result().get_contract_event() {
-                    if event.get_address() == contract_address {
-                        let mut validator_set = ValidatorSet::default();
-                        for topic in event.get_topic() {
-                            let mut v = Validator::default();
-                            v.set_address(topic.clone());
-                            validator_set.mut_validators().push(v);
+        if tx_result_set.len() > 0 {
+            if let Some(contract_address) = get_system_address(VALIDATORS_ELECT_CONTRACT_INDEX) {
+                for tx_result in tx_result_set {
+                    for event in tx_result.get_contract_result().get_contract_event() {
+                        if event.get_address() == contract_address {
+                            let mut validator_set = ValidatorSet::default();
+                            for topic in event.get_topic() {
+                                let mut v = Validator::default();
+                                v.set_address(topic.clone());
+                                validator_set.mut_validators().push(v);
+                            }
+                            return validator_set;
                         }
-                        return validator_set;
                     }
                 }
             }
         }
+
         LAST_COMMITTED_BLOCK_INFO_REF
             .read()
             .get_validators()

@@ -11,6 +11,7 @@ pub fn execute<E: BlockEnv>(
     state: CacheState,
     env: E,
 ) -> std::result::Result<(), VmError> {
+    nonce_increase(&transaction.sender().to_string(), &state)?;
     let system_contract = match SYSTEM_CONTRACT_FACTORY_INSTANCE.get() {
         Some(s) => s,
         None => {
@@ -53,5 +54,28 @@ pub fn execute<E: BlockEnv>(
     receipt.index = index;
     post_state.add_receipt(env.height(), receipt);
 
+    return Ok(());
+}
+
+fn nonce_increase(source: &String, state: &CacheState) -> std::result::Result<(), VmError> {
+    let account = match state.get(source) {
+        Ok(result) => result,
+        Err(e) => {
+            return Err(VmError::StateError {
+                error: format!("{:?}", e),
+            })
+        }
+    };
+    match account {
+        Some(mut account) => {
+            account.nonce_increase();
+            state.upsert(source, account);
+        }
+        None => {
+            return Err(VmError::StateError {
+                error: format!("can not find account {:?}", source),
+            })
+        }
+    };
     return Ok(());
 }

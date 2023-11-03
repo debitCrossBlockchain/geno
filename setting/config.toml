@@ -45,7 +45,7 @@ validators = ["did:gdt:0x160b54be617f4bff07bd6c994fc6dd17a69d5e4e"]
 consensus_type = "pbft"
 block_max_tx_size = 1000
 block_max_contract_size = 100
-commit_interval = 10
+commit_interval = 10000
 
 
 [json_rpc]

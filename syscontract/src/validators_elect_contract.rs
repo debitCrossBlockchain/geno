@@ -34,10 +34,17 @@ impl SystemContractTrait for ValidatorsElectContract {
     ) -> anyhow::Result<ContractResult> {
         if function == "proposal" {
             return self.proposal(params);
+        } else if function == "vote" {
+            return self.vote(params);
+        } else if function == "revoke" {
+            return self.revoke(params);
+        } else if function == "query" {
+            return self.query(params);
+        } else {
+            bail!("unknown function");
         }
-        let result = ContractResult::new();
-        Ok(result)
     }
+
     fn init_context(&mut self, context: Self::Context) {
         self.context.clone_from(&context);
     }
@@ -211,7 +218,7 @@ impl ValidatorsElectContract {
             }
         };
 
-        let data = account.get_contract_metadata(VALIDATORS_KEY.as_bytes())?;
+        let data = account.get_contract_metadata(PROPOSAL_LIST_KEY.as_bytes())?;
         let data = match data {
             Some(a) => a,
             None => {
