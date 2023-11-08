@@ -7,7 +7,6 @@ data/
 */.idea/
 .cargo/
 .cargo-remote.toml
-Cargo.lock
 *.bin
 *.iml
 
