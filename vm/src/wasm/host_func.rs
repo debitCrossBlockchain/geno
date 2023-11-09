@@ -10,7 +10,7 @@ pub fn host_func_init(engine: &Engine) -> Result<Linker<Context>>
 {
     let mut linker = Linker::new(&engine);
 
-    linker.func_wrap("geno", "get_owner",|mut caller: Caller<'_, Context>, ptr: i32| {
+    linker.func_wrap("wasm", "get_owner",|mut caller: Caller<'_, Context>, ptr: i32| {
         charge_gas(&mut caller, GAS_ENV_FUNC_BASE);
         let addr = caller.data_mut().owner;//
         let owner = &addr.0;
@@ -26,7 +26,7 @@ pub fn host_func_init(engine: &Engine) -> Result<Linker<Context>>
         Ok(())
     })?;
 
-    linker.func_wrap("geno", "get_invoker", |mut caller: Caller<'_, Context>, ptr: i32| {
+    linker.func_wrap("wasm", "get_invoker", |mut caller: Caller<'_, Context>, ptr: i32| {
         charge_gas(&mut caller, GAS_ENV_FUNC_BASE);
         let invoker = caller.data_mut().invoker;
 
@@ -41,7 +41,7 @@ pub fn host_func_init(engine: &Engine) -> Result<Linker<Context>>
         Ok(())
     })?;
 
-    linker.func_wrap("geno", "get_contract_address", |mut caller: Caller<'_, Context>, ptr: i32| {
+    linker.func_wrap("wasm", "get_contract_address", |mut caller: Caller<'_, Context>, ptr: i32| {
         charge_gas(&mut caller, GAS_ENV_FUNC_BASE);
         let contract_addr = caller.data_mut().self_address;
 
@@ -56,13 +56,13 @@ pub fn host_func_init(engine: &Engine) -> Result<Linker<Context>>
         Ok(())
     })?;
 
-    linker.func_wrap("geno", "get_contract_balance", |mut caller: Caller<'_, Context>|-> i64 {
+    linker.func_wrap("wasm", "get_contract_balance", |mut caller: Caller<'_, Context>|-> i64 {
         charge_gas(&mut caller, GAS_ENV_FUNC_BASE);
         let t = caller.data_mut().self_balance;
         t as i64
     })?;
 
-    linker.func_wrap("geno", "get_parameter", |mut caller: Caller<'_, Context>, ptr: i32|-> i32 {
+    linker.func_wrap("wasm", "get_parameter", |mut caller: Caller<'_, Context>, ptr: i32|-> i32 {
         charge_gas(&mut caller, GAS_ENV_FUNC_BASE);
         
         if caller.data().param.len() > 4096{ //MAX_PREALLOCATED_CAPACITY
@@ -85,17 +85,17 @@ pub fn host_func_init(engine: &Engine) -> Result<Linker<Context>>
     })?;
 
 
-    linker.func_wrap("geno", "get_block_time", |mut caller: Caller<'_, Context> |-> u64 {
+    linker.func_wrap("wasm", "get_block_time", |mut caller: Caller<'_, Context> |-> u64 {
         charge_gas(&mut caller, GAS_ENV_FUNC_BASE);
         caller.data().metadata.block_time
     })?;
 
-    linker.func_wrap("geno", "get_block_height", |mut caller: Caller<'_, Context> |-> u64 {
+    linker.func_wrap("wasm", "get_block_height", |mut caller: Caller<'_, Context> |-> u64 {
         charge_gas(&mut caller, GAS_ENV_FUNC_BASE);
         caller.data_mut().metadata.block_height
     })?;
     
-    linker.func_wrap("geno", "get_block_hash", |mut caller: Caller<'_, Context>, ptr:i32 |-> i32 {
+    linker.func_wrap("wasm", "get_block_hash", |mut caller: Caller<'_, Context>, ptr:i32 |-> i32 {
         charge_gas(&mut caller, GAS_ENV_FUNC_BASE);
         let tx:String = caller.data_mut().metadata.tx_hash.clone();
         let mem = match caller.get_export("memory") {
@@ -109,7 +109,7 @@ pub fn host_func_init(engine: &Engine) -> Result<Linker<Context>>
         tx.as_bytes().len() as i32
     })?;
 
-    linker.func_wrap("geno", "set_event", |mut caller: Caller<'_, Context>, start: i32, length: i32 |-> i32 {
+    linker.func_wrap("wasm", "set_event", |mut caller: Caller<'_, Context>, start: i32, length: i32 |-> i32 {
         charge_gas(&mut caller, GAS_ENV_FUNC_BASE);
         if length <= 512 { //MAX_LOG_SIZE
 
@@ -137,7 +137,7 @@ pub fn host_func_init(engine: &Engine) -> Result<Linker<Context>>
         }
     })?;
 
-    linker.func_wrap("geno", "set_return_data",  |mut caller: Caller<'_, Context>, start: i32, len: i32| ->i32 {
+    linker.func_wrap("wasm", "set_return_data",  |mut caller: Caller<'_, Context>, start: i32, len: i32| ->i32 {
         charge_gas(&mut caller, GAS_ENV_FUNC_BASE);
         
         let mem = match caller.get_export("memory") {
@@ -185,7 +185,7 @@ pub fn host_func_init(engine: &Engine) -> Result<Linker<Context>>
         }
     })?;
 
-    linker.func_wrap("geno", "Debug", |mut caller: Caller<'_, Context>, ptr: i32, len: i32| {
+    linker.func_wrap("wasm", "Debug", |mut caller: Caller<'_, Context>, ptr: i32, len: i32| {
         let mem = match caller.get_export("memory"){
             Some(Extern::Memory(mem)) => mem,
             _ => { 
