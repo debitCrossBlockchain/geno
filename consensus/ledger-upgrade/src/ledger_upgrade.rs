@@ -56,7 +56,8 @@ impl LedgerUpgradeInstance {
         self.is_validator
     }
 
-    pub fn set_is_validator(&mut self, is_validator: bool) {
+    pub fn set_info(&mut self, version: u64, is_validator: bool) {
+        self.last_ledger_version = version;
         self.is_validator = is_validator;
     }
 
@@ -107,10 +108,6 @@ impl LedgerUpgradeInstance {
 
             self.current_states.insert(addr.clone(), info);
         }
-    }
-
-    pub fn set_last_ledger_version(&mut self, version: u64) {
-        self.last_ledger_version = version;
     }
 
     pub fn set_new_version(&mut self, new_version: u64) {

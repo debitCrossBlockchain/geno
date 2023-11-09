@@ -45,7 +45,7 @@ fn main() {
         network.clone(),
     );
 
-    Catchuper::create_and_start(
+    let commit_notify = Catchuper::create_and_start(
         CatchupNetwork::new(network.clone()),
         StoreageExecutor::new(BlockExecutor {}),
         broadcast_tx_sender,
@@ -56,6 +56,7 @@ fn main() {
         network_consensus,
         consensus_committed_sender,
         ws_event_sender,
+        commit_notify,
     );
 
     let term = Arc::new(AtomicBool::new(false));

@@ -1,12 +1,14 @@
 use crate::catchup_status::{CatchupStatus, Peers};
 use crate::network::CatchupNetworkInterace;
 use crate::notification::{
-    BlocksReceiver, BroadcastSender, ChainStatusReceiver, TimerNotificationReceiver,
+    BlocksReceiver, BroadcastSender, ChainStatusReceiver, CommitBlockSender,
+    TimerNotificationReceiver,
 };
 use crate::storage_executor::StorageExecutorInterface;
 
 use ledger_store::LedgerStorage;
 use network::{Endpoint, LocalBusSubscriber, ReturnableProtocolsMessage};
+use protos::ledger::Ledger;
 use protos::{
     common::{ProtocolsActionMessageType, ProtocolsMessage, ProtocolsMessageType},
     ledger::{
@@ -33,6 +35,7 @@ pub struct Catchuper<S, N> {
     txns_notify: BroadcastSender,
     status_notify: ChainStatusReceiver,
     blocks_notify: BlocksReceiver,
+    commit_sender: CommitBlockSender,
 }
 
 impl<S, N> Catchuper<S, N>
@@ -40,7 +43,11 @@ where
     S: StorageExecutorInterface + Send + 'static,
     N: CatchupNetworkInterace + Send + 'static,
 {
-    pub fn create_and_start(network: N, executor: S, txns_notify: BroadcastSender) {
+    pub fn create_and_start(
+        network: N,
+        executor: S,
+        txns_notify: BroadcastSender,
+    ) -> crossbeam_channel::Receiver<Ledger> {
         let (sender, timer_notify) = bounded(1024);
         let _id: i64 = TimerManager::instance().new_repeating_timer(
             chrono::Duration::seconds(5),
@@ -48,15 +55,17 @@ where
             TimerEventType::LedgerSync,
             None,
         );
-        let (ChainStatusSender, ChainStatusReceiver) = unbounded();
-        let (BlocksSender, BlocksReceiver) = unbounded();
+        let (chain_status_sender, chain_status_receiverer) = unbounded();
+        let (blocks_sender, blocks_receiver) = unbounded();
+        let (commit_sender, commit_receiver) = unbounded();
         let mut catchup = Catchuper::new(
             network,
             executor,
             timer_notify,
             txns_notify,
-            ChainStatusReceiver,
-            BlocksReceiver,
+            chain_status_receiverer,
+            blocks_receiver,
+            commit_sender,
         );
 
         //get last blockheader
@@ -67,14 +76,15 @@ where
 
         catchup
             .network
-            .register_sync_handler(ProtocolsMessageType::SYNCCHAIN, ChainStatusSender);
+            .register_sync_handler(ProtocolsMessageType::SYNCCHAIN, chain_status_sender);
         catchup
             .network
-            .register_sync_handler(ProtocolsMessageType::SYNCBLOCK, BlocksSender);
+            .register_sync_handler(ProtocolsMessageType::SYNCBLOCK, blocks_sender);
 
         let _ = std::thread::spawn(move || loop {
             catchup.start(subscriber.clone());
         });
+        commit_receiver
     }
 
     pub fn new(
@@ -84,6 +94,7 @@ where
         txns_notify: BroadcastSender,
         status_notify: ChainStatusReceiver,
         blocks_notify: BlocksReceiver,
+        commit_sender: CommitBlockSender,
     ) -> Self {
         Self {
             status: CatchupStatus::default(),
@@ -94,6 +105,7 @@ where
             txns_notify,
             status_notify,
             blocks_notify,
+            commit_sender,
         }
     }
 
@@ -186,12 +198,12 @@ where
                     self.catchup_chain();
                     if !self.status.is_catchuping() {
                         self.catchup_block(None);
-                    }else{
-                        let height = match LedgerStorage::load_max_block_height(){
+                    } else {
+                        let height = match LedgerStorage::load_max_block_height() {
                             Ok(Some(h)) => h,
                             _ => return,
                         };
-                        if self.status.check(height){
+                        if self.status.check(height) {
                             self.status.catchup_done()
                         }
                     }
@@ -256,11 +268,7 @@ where
         let begin = block_req.get_begin() as u64;
         //let end = block_req.get_end() as u64;
 
-        let end_rep = if last_h > begin {
-            begin + 5
-        }else{
-            begin + 1
-        };
+        let end_rep = if last_h > begin { begin + 5 } else { begin + 1 };
 
         let mut block_rep = SyncBlockResponse::new();
         let mut blocks = vec![];
@@ -301,7 +309,7 @@ where
                 Ok(value) => value,
                 Err(e) => {
                     self.status.catchup_done();
-                    return
+                    return;
                 }
             };
 
@@ -322,13 +330,15 @@ where
         for (i, block) in blocks.iter().enumerate() {
             if last_h + 1 + i as u64 == block.get_header().get_height() {
                 info!("execute verify block {}", block.get_header().get_height());
-                match self.execute_verify_block(block.to_owned()){
-                    Ok(_) => (),
+                match self.execute_verify_block(block.to_owned()) {
+                    Ok(_) => {
+                        let _ = self.commit_sender.send(block.to_owned());
+                    }
                     Err(_) => {
                         self.peers.update_score_error(peer_id);
                         self.status.catchup_done();
-                        return
-                    },
+                        return;
+                    }
                 };
             }
         }

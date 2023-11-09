@@ -6,11 +6,10 @@ use ledger_upgrade::ledger_upgrade::LedgerUpgradeInstance;
 use msp::bytes_to_hex_str;
 use network::PeerNetwork;
 use parking_lot::RwLock;
-use protobuf::error;
 use protos::{
     common::{TransactionResult, ValidatorSet},
     consensus::{BftMessageType, BftProof, BftSign, LedgerUpgrade, NewViewRepondParam, TxHashList},
-    ledger::{ExtendedData, Ledger},
+    ledger::Ledger,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -264,7 +263,7 @@ impl BftConsensus {
     pub fn clear_view_changes(&mut self) {
         //Delete other incomplete view change instances
         let view_number = self.view_number();
-        self.logs.vc_instances.retain(|key, vc_instance| {
+        self.logs.vc_instances.retain(|_, vc_instance| {
             if vc_instance.end_time == 0 {
                 // info!(parent:&self.span(),"Delete the view change instance (vn:{}) that is not completed", vc_instance.view_number);
                 return false;
@@ -318,7 +317,7 @@ impl BftConsensus {
     }
 
     pub fn delete_new_view_repond_timer(&self) {
-        let ret = TimerManager::instance().delete_timer(self.new_view_repond_timer_id);
+        let _ = TimerManager::instance().delete_timer(self.new_view_repond_timer_id);
     }
 
     pub fn handle_view_changed(&mut self, last_value: &Option<Ledger>) {
@@ -347,14 +346,7 @@ impl BftConsensus {
                 instance.get_bft_sign_vec(&BftInstancePhase::as_phase(&BftMessageType::COMMIT));
             let proof = NewBftMessage::get_commited_proof(vec);
 
-            self.handle_value_committed(index.sequence, instance.pre_prepare.get_value(), proof);
-
-            // self.handle_value_committed_before(
-            //     index.sequence,
-            //     instance.pre_prepare.get_value(),
-            //     proof,
-            //     instance.pre_prepare.get_proposer(),
-            // );
+            self.handle_value_commit(index.sequence, instance.pre_prepare.get_value(), proof);
 
             exe_vec.push(index.sequence);
         }
@@ -371,7 +363,7 @@ impl BftConsensus {
         return true;
     }
 
-    pub fn handle_value_committed(&mut self, request_seq: u64, value: &[u8], proof: BftProof) {
+    pub fn handle_value_commit(&mut self, request_seq: u64, value: &[u8], proof: BftProof) {
         let mut block = match ProtocolParser::deserialize::<Ledger>(value) {
             Ok(block) => block,
             Err(e) => {
@@ -417,7 +409,6 @@ impl BftConsensus {
         );
 
         //ledger execute
-        let t1 = chrono::Local::now().timestamp_millis();
         match BlockExecutor::execute_block(&block) {
             Ok((tx_list, block_result)) => {
                 if let Err(e) = BlockExecutor::commit_block(&mut block, tx_list, &block_result) {
@@ -433,8 +424,13 @@ impl BftConsensus {
                 return;
             }
         };
+    }
 
-        let t2 = chrono::Local::now().timestamp_millis();
+    pub fn handle_value_commit_after(&mut self, block: Ledger) {
+        info!("handle commit after: block height:{} last_exe_sequence:{}",block.get_header().get_height(),self.last_exe_sequence());
+        if block.get_header().get_height() != self.last_exe_sequence() + 1 {
+            return;
+        }
 
         self.delete_commit_tx(&block);
 
@@ -459,16 +455,14 @@ impl BftConsensus {
         self.network_tx.update_validators(&validators);
 
         if self.is_validator() {
-            self.ledger_upgrade_instance.write().set_is_validator(true);
-        } else {
-            self.ledger_upgrade_instance.write().set_is_validator(false);
-        }
-
-        {
             self.ledger_upgrade_instance
                 .write()
-                .set_last_ledger_version(lcl.get_version())
-        };
+                .set_info(block.get_header().get_version(), true);
+        } else {
+            self.ledger_upgrade_instance
+                .write()
+                .set_info(block.get_header().get_version(), false);
+        }
 
         //start publish timer
         let next_interval = CONFIGURE_INSTANCE_REF.consensus.commit_interval;
@@ -483,20 +477,16 @@ impl BftConsensus {
             self.start_consensus_publish_timer(waiting_time);
 
             info!(parent:self.span(),
-                "Ledger({}) closed successfully,txs({}) txpool commit({})ms, ledger time used ({})ms, next consensus in({})ms",
+                "Ledger({}) closed successfully,txs({}) next consensus in({})ms",
                 block_height,
                 block.get_transaction_signs().len(),
-                t1 - t0,
-                t2 - t1,
                 waiting_time,
             );
         } else {
             info!(parent:self.span(),
-                "Ledger({}) closed successfully,txs({}) txpool commit({})ms, ledger time used ({})ms, next consensus checked in({})ms",
+                "Ledger({}) closed successfully,txs({}) next consensus checked in({})ms",
                 block_height,
                 block.get_transaction_signs().len(),
-                t1 - t0,
-                t2 - t1,
                 waiting_time
             );
         }
@@ -768,9 +758,9 @@ impl BftConsensus {
     }
 
     pub fn handle_receive_consensus(&mut self, bft_sign: &BftSign) -> bool {
-        if !self.is_validator() {
-            return true;
-        }
+        // if !self.is_validator() {
+        //     return true;
+        // }
         let bft = bft_sign.get_bft();
         //Check the message item.
         if !self.state.check_bft_message(&bft_sign) {

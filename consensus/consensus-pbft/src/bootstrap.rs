@@ -1,7 +1,7 @@
 use configure::CONFIGURE_INSTANCE_REF;
 use crossbeam_channel::{bounded, Receiver};
 use executor::LAST_COMMITTED_BLOCK_INFO_REF;
-use ledger_upgrade::ledger_upgrade::{LedgerUpgradeInstance, LedgerUpgradeService};
+use ledger_upgrade::ledger_upgrade::LedgerUpgradeService;
 use network::PeerNetwork;
 use parking_lot::RwLock;
 use protos::{
@@ -25,6 +25,7 @@ pub fn start_consensus(
     network_consensus: PeerNetwork,
     commit_to_txpool_sender: CommitNotificationSender,
     ws_publish_event_sender: tokio::sync::mpsc::UnboundedSender<(Ledger, Vec<TransactionResult>)>,
+    commit_notify: Receiver<Ledger>,
 ) {
     let (timer_sender, timer_receiver) = bounded::<TimterEventParam>(1024);
 
@@ -56,10 +57,17 @@ pub fn start_consensus(
             .set_new_version(LEDGER_VERSION);
     }
     if consensus.read().is_validator() {
-        ledger_upgrade_instance.write().set_is_validator(true);
+        ledger_upgrade_instance
+            .write()
+            .set_info(lcl.get_version(), true);
     }
 
-    process(consensus.clone(), timer_receiver, network_consensus);
+    process(
+        consensus.clone(),
+        timer_receiver,
+        network_consensus,
+        commit_notify,
+    );
     start_consensus_check_timer(consensus.clone());
     start_consensus_publish_timer(consensus.clone());
     start_ledgerclose_check_timer(consensus.clone());
@@ -69,6 +77,7 @@ fn process(
     consensus: Arc<RwLock<BftConsensus>>,
     timer_receiver: Receiver<TimterEventParam>,
     network: PeerNetwork,
+    commit_notify: Receiver<Ledger>,
 ) {
     let subscriber = network.add_subscriber(ProtocolsMessageType::CONSENSUS);
     std::thread::spawn(move || loop {
@@ -127,6 +136,16 @@ fn process(
                                 error!("{:?}", e);
                             }
                         }
+                    }
+                    Err(e)=>{
+                        error!("{:?}", e);
+                    }
+                }
+            }
+            recv(commit_notify) -> para =>{
+                match para {
+                    Ok(ledger)=>{
+                        consensus.write().handle_value_commit_after(ledger);
                     }
                     Err(e)=>{
                         error!("{:?}", e);

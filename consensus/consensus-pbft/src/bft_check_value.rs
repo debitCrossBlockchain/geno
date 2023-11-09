@@ -8,7 +8,6 @@ use protos::{
     consensus::*,
     ledger::{Ledger, LedgerHeader},
 };
-use state_store::StateStorage;
 use std::collections::HashSet;
 use tracing::{error, Span};
 use utils::{
