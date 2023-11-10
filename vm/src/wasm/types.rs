@@ -21,7 +21,7 @@ impl Metadata{
         bail!("transfer fail!");
     }
 
-    pub fn invoker(&self, address:AccountAddress, amount:u64, func:String, arg:String)->Result<()>{
+    pub fn call(&self, address:AccountAddress, amount:u64, func:String, arg:String)->Result<()>{
         bail!("invoker fail!");
     }
 
