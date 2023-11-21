@@ -59,7 +59,17 @@ impl EvmVM {
                 Output::Call(value) => (Some(value.into()), None),
                 Output::Create(value, address) => (Some(value.into()), address),
             },
-            _ => (None, None),
+            ExecutionResult::Revert { gas_used, output } => {
+                println!(
+                    "Execution reverted: gas used: {}, output: {:?}",
+                    gas_used, output
+                );
+                (Some(output.into()), None)
+            }
+            ExecutionResult::Halt { reason, gas_used } => {
+                println!("Execution halted: {:?}, gas used: {}", reason, gas_used);
+                (None, None)
+            }
         };
 
         let blocknum = match u64::try_from(self.evm.env.block.number) {
@@ -291,7 +301,10 @@ impl EvmVM {
         Ok(())
     }
 
-    pub(crate) fn fill_block_env(&mut self, header: &LedgerHeader) -> std::result::Result<(), VmError> {
+    pub(crate) fn fill_block_env(
+        &mut self,
+        header: &LedgerHeader,
+    ) -> std::result::Result<(), VmError> {
         self.evm.env.block.number = U256::from(header.get_height());
         self.evm.env.block.coinbase = AddressConverter::to_evm_address(header.get_proposer())?;
         self.evm.env.block.timestamp = U256::from(header.get_timestamp());
@@ -303,7 +316,10 @@ impl EvmVM {
         Ok(())
     }
 
-    pub(crate) fn fill_cfg_env(&mut self, header: &LedgerHeader) -> std::result::Result<(), VmError> {
+    pub(crate) fn fill_cfg_env(
+        &mut self,
+        header: &LedgerHeader,
+    ) -> std::result::Result<(), VmError> {
         let chain_id = match u64::from_str_radix(header.get_chain_id(), 10) {
             Ok(value) => value,
             Err(e) => {
@@ -317,7 +333,7 @@ impl EvmVM {
             }
         };
         self.evm.env.cfg.chain_id = U256::from(chain_id);
-        self.evm.env.cfg.spec_id = revm::primitives::MERGE;
+        self.evm.env.cfg.spec_id = revm::primitives::CANCUN;
         self.evm.env.cfg.perf_all_precompiles_have_balance = false;
         self.evm.env.cfg.perf_analyse_created_bytecodes = AnalysisKind::Analyse;
         Ok(())

@@ -312,6 +312,63 @@ async fn send_transaction(service: JsonRpcService, request: JsonRpcRequest) -> R
     }
 }
 
+async fn query_contract(
+    service: JsonRpcService,
+    request: JsonRpcRequest,
+) -> Result<TransactionResultView> {
+    if request.params.len() != 1 {
+        return Err(Error::new(JsonRpcError::invalid_params_size(
+            "Currently only one transaction is supported for one upload!".to_string(),
+        )));
+    }
+
+    let value = request.get_param(0);
+
+    let submit_tx: SubmitTx = match serde_json::from_value(value) {
+        Ok(t) => t,
+        Err(err) => {
+            return Err(Error::new(JsonRpcError::invalid_parameter(
+                "queryContract",
+                err.to_string().as_str(),
+            )));
+        }
+    };
+
+    if let Some(e) = submit_tx.transaction.check_parms() {
+        return Err(e);
+    }
+
+    let transaction_sign = match submit_tx.signature {
+        None => match submit_tx.private_key {
+            None => (),
+            Some(private_key_str) => (),
+        },
+        Some(sig_raw) => (),
+    };
+
+    // let sign_transaction = SignedTransaction::try_from(transaction_sign)?;
+    // let tx_hash = sign_transaction.hash_hex();
+    // let (request_sender, callback) = oneshot::channel();
+    // service
+    //     .jsonrpc_to_txpool_sender
+    //     .unbounded_send((sign_transaction, request_sender))?;
+
+    // let (mempool_status, vm_status_opt) = callback.await??;
+    // if let Some(vm_status) = vm_status_opt {
+    //     Err(Error::new(JsonRpcError::validation_status(vm_status)))
+    // } else if mempool_status.code == TxPoolStatusCode::Accepted {
+    //     //Ok(TxHash::new(tx_hash))
+    //     Err(Error::new(JsonRpcError::mempool_error(mempool_status)?))
+    // } else {
+    //     Err(Error::new(JsonRpcError::mempool_error(mempool_status)?))
+    // }
+
+    return Err(Error::new(JsonRpcError::invalid_parameter(
+        "queryContract",
+        "error",
+    )));
+}
+
 #[allow(unused_comparisons)]
 pub(crate) fn build_registry() -> RpcRegistry {
     let mut registry = RpcRegistry::new();

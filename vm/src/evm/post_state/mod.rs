@@ -6,11 +6,11 @@ use revm::primitives::{
     B256, U256,
 };
 use state::{AccountFrame, CacheState};
-use tracing::info;
 use std::{
     collections::{BTreeMap, BTreeSet},
     str::FromStr,
 };
+use tracing::info;
 use types::error::VmError;
 mod account;
 pub use account::{AccountChanges, PostAccount};
@@ -250,6 +250,32 @@ impl PostState {
         block_number: u64,
         state: CacheState,
     ) -> std::result::Result<(), VmError> {
+        // process accounts
+        tracing::trace!(target: "post_state", "Process accounts in block {}", block_number);
+        for (address, paccount) in self.accounts.iter() {
+            let geno_address = AddressConverter::from_evm_address(address.clone());
+
+            if let Some(account) = paccount {
+                tracing::info!(target: "post_state", "Updating state account {}, {:?}",geno_address, account);
+                if let Some(mut geno_account) = Self::get_geno_account(&state, &geno_address)? {
+                    // update accountp
+                    Self::update_geno_account(&mut geno_account, &account);
+                    state.upsert(&geno_address, geno_account);
+                } else {
+                    // create account
+                    if account.nonce > 1 {
+                        tracing::error!(target: "post_state", "Create account but nonce != 1 {}",geno_address);
+                        panic!("post_state create account but nonce != 1 {}", geno_address);
+                    }
+                    let geno_account = Self::create_geno_account(geno_address.clone(), &account);
+                    state.upsert(&geno_address, geno_account);
+                }
+            } else if Self::get_geno_account(&state, &geno_address)?.is_some() {
+                tracing::trace!(target: "post_state","Deleting state account {}",geno_address);
+                state.delete(&geno_address);
+            }
+        }
+
         // process storages
         tracing::trace!(target: "post_state", "Process storages in block {}", block_number);
         for (address, storage) in self.storage.iter() {
@@ -284,32 +310,6 @@ impl PostState {
                 }
             }
             state.upsert(&geno_address, geno_account);
-        }
-
-        // process accounts
-        tracing::trace!(target: "post_state", "Process accounts in block {}", block_number);
-        for (address, paccount) in self.accounts.iter() {
-            let geno_address = AddressConverter::from_evm_address(address.clone());
-
-            if let Some(account) = paccount {
-                tracing::info!(target: "post_state", "Updating state account {}, {:?}",geno_address, account);
-                if let Some(mut geno_account) = Self::get_geno_account(&state, &geno_address)? {
-                    // update accountp
-                    Self::update_geno_account(&mut geno_account, &account);
-                    state.upsert(&geno_address, geno_account);
-                } else {
-                    // create account
-                    if account.nonce > 1 {
-                        tracing::error!(target: "post_state", "Create account but nonce != 1 {}",geno_address);
-                        panic!("post_state create account but nonce != 1 {}", geno_address);
-                    }
-                    let geno_account = Self::create_geno_account(geno_address.clone(), &account);
-                    state.upsert(&geno_address, geno_account);
-                }
-            } else if Self::get_geno_account(&state, &geno_address)?.is_some() {
-                tracing::trace!(target: "post_state","Deleting state account {}",geno_address);
-                state.delete(&geno_address);
-            }
         }
 
         // process contracts code
